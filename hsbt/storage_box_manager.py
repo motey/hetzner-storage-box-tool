@@ -1,24 +1,37 @@
-
-from typing import Union
+from typing import Union, Dict, List
 
 from pathlib import Path
 
-from hsbt.utils import run_command
+from hsbt.utils import run_command, convert_df_output_to_dict
 from hsbt.key_manager import KeyManager
-
 
 
 class DeployKeyPasswordMissingError(Exception):
     pass
 
+
 class HetznerStorageBox:
-    def __init__(self, host: str, user: str, password: str=None, local_mount_point key_manager:KeyManager=None):
+    def __init__(
+        self,
+        local_mount_point: Union[str, Path],
+        host: str,
+        user: str,
+        password: str = None,
+        key_manager: KeyManager = None,
+        remote_dir: Union[str, Path] = "/",
+    ):
+        if not isinstance(local_mount_point, Path):
+            local_mount_point: Path = Path(local_mount_point)
+        if not isinstance(remote_dir, Path):
+            remote_dir: Path = Path(remote_dir)
+        self.local_mount_point = local_mount_point
+        self.remote_dir = remote_dir
         self.host = host
         self.user = user
         self.password = password
-        self.key_manager:KeyManager = key_manager
+        self.key_manager: KeyManager = key_manager
 
-    def add_key_manager(self, key_manager:KeyManager=None):
+    def add_key_manager(self, key_manager: KeyManager = None):
         if key_manager is None:
             key_manager = KeyManager(identifier=f"hsbt_{self.user}")
         self.key_manager = key_manager
@@ -32,7 +45,7 @@ class HetznerStorageBox:
         self.key_manager.create_know_host_entry_if_not_exists(self.host)
         if self.key_manager.private_key_path is None:
             self.key_manager.ssh_keygen(exists_ok=True)
-        
+
         if self.check_if_public_key_is_deployed(self.key_manager.private_key_path):
             return
         if not self.password:
@@ -44,7 +57,7 @@ class HetznerStorageBox:
             extra_envs={"SSHPASS": self.password},
         )
         self.check_if_public_key_is_deployed(self.key_manager.private_key_path)
-        
+
         return
 
     def check_if_public_key_is_deployed(self):
@@ -55,7 +68,7 @@ class HetznerStorageBox:
                 -o UserKnownHostsFile={self.key_manager.known_host_path} {self.user}@{self.host} exit 2>&1 | grep 'Authentication succeeded'"""
         )
 
-    def _run_remote_ssh_command(self,command:str):
+    def _run_remote_ssh_command(self, command: str):
         remote_command = f"ssh -p23 -i {self.key_manager.private_key_path} \
             -o PreferredAuthentications=publickey \
             -o UserKnownHostsFile={self.key_manager.known_host_path} \
@@ -63,22 +76,29 @@ class HetznerStorageBox:
             {command}"
         run_command(remote_command)
 
-    def create_remote_directory(self, path:Union[str,Path]):
+    def create_remote_directory(self, path: Union[str, Path]):
         if not isinstance(path, Path):
             path: Path = Path(path)
         self._run_remote_ssh_command(f"mkdir -p {path}")
 
     def storage_box_is_mounted(self):
+        # wip
         pass
 
-    def mount_storage_box_via_fstab():
-        # work on this example. its just mockup code
+    def mount_storage_box_via_fstab(self):
+        # wip: work on this example. its just mockup code
         fstab_entry = f"{self.storage_box_username}@{self.storage_box_hostname}:/ {self.local_mount_point} fuse.sshfs IdentityFile={self.keyfile_path},delay_connect,_netdev,user,idmap=user 0 0"
         with open("/etc/fstab", "a") as f:
             f.write(fstab_entry)
 
-    def mount_storage_box_via_autofs():
-        # work on this example. its just mockup code
+    def mount_storage_box_via_autofs(self):
+        # wip: work on this example. its just mockup code
         sshfs_cmd = f"sshfs -o password_stdin {self.storage_box_username}@{self.storage_box_hostname}:/ {self.local_mount_point}"
         sshfs_proc = subprocess.Popen(sshfs_cmd, stdin=subprocess.PIPE, shell=True)
         sshfs_proc.communicate(input=self.storage_box_password.encode())
+
+    def get_available_space(self, human_readable:bool=False) -> Dict:
+        # https://docs.hetzner.com/robot/storage-box/available-disk-space
+        # wip
+        convert_df_output_to_dict()
+        pass

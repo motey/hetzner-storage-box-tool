@@ -70,3 +70,14 @@ def run_command(
     return proc.stdout
 
 
+def convert_df_output_to_dict(df_output):
+    lines = df_output.strip().split('\n')
+    headers = lines[0].split()
+    devices = []
+
+    for line in lines[1:]:
+        values = line.split()
+        device = dict(zip(headers, values))
+        devices.append(device)
+    return devices
+
