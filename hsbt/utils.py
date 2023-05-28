@@ -132,11 +132,11 @@ class ConfigFileEditor:
         start_delimiter: str = f"{self.line_comment_line_delimiter} <{self.source_hint} '{self.base_identifier}/{identifier}'>"
 
         end_delimiter: str = f"{self.line_comment_line_delimiter} </{self.source_hint} '{self.base_identifier}/{identifier}'>"
+        config_file_lines: List[str] = []
         if self.target_file.exists:
             with open(self.target_file, "r") as file:
-                config_file_lines: List[str] = file.readlines()
-        else:
-            config_file_lines: List[str] = str
+                for line in file.readlines():
+                    config_file_lines.append(line.strip("\n"))
         record_stop: bool = False
         updated_existing: bool = False
         new_config_file_lines: List[str] = []
@@ -144,7 +144,7 @@ class ConfigFileEditor:
             if line == start_delimiter and overwrite_entry_if_exists:
                 record_stop = True
                 updated_existing = True
-                new_config_file_lines.append(line)
+                new_config_file_lines.append(line.strip("\n"))
                 new_config_file_lines.extend(content)
             elif (
                 line == start_delimiter
@@ -168,4 +168,4 @@ class ConfigFileEditor:
 
 
 test = ConfigFileEditor("./test.config")
-test.create_config_entry("hello=1\nhello_line2", "MY ENTRY", True)
+# test.create_config_entry("hello=2\nhello_line4", "MY ENTRY", True)
