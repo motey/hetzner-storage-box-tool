@@ -97,7 +97,7 @@ class HetznerStorageBox:
         sshfs_proc = subprocess.Popen(sshfs_cmd, stdin=subprocess.PIPE, shell=True)
         sshfs_proc.communicate(input=self.storage_box_password.encode())
 
-    def get_available_space(self, human_readable:bool=False) -> Dict:
+    def get_available_space(self, human_readable: bool = False) -> Dict:
         # https://docs.hetzner.com/robot/storage-box/available-disk-space
         # wip
         convert_df_output_to_dict()
