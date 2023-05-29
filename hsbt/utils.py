@@ -105,7 +105,7 @@ class ConfigFileEditor:
         self.create_file_if_not_exists = create_file_if_not_exists
         self.create_mode = create_mode
 
-    def validate_and_prepare_target(self):
+    def _validate_and_prepare_target(self, supress_creating: bool = False):
         if self.target_file.is_dir():
             raise ValueError(
                 f"Target file {self.target_file} is directory. Expected file."
@@ -113,7 +113,9 @@ class ConfigFileEditor:
         elif self.target_file.is_file():
             if not os.access(self.target_file, os.W_OK):
                 raise ValueError(f"Target file {self.target_file} is not writable.")
-        elif not self.target_file.exists() and self.create_file_if_not_exists:
+        elif not self.target_file.exists() and (
+            self.create_file_if_not_exists and not supress_creating
+        ):
             self.target_file.parent.mkdir(exist_ok=True, parents=True, mode=551)
             self.target_file.touch(mode=self.create_mode)
         elif not self.target_file.exists() and not self.create_file_if_not_exists:
@@ -126,12 +128,14 @@ class ConfigFileEditor:
         overwrite_entry_if_exists: bool = False,
         entry_exists_ok: bool = False,
     ):
-        self.validate_and_prepare_target()
+        # Todo: this function is mess. Improve!
+
+        self._validate_and_prepare_target(supress_creating=not bool(content))
         if isinstance(content, str):
             content = [content]
-        start_delimiter: str = f"{self.line_comment_line_delimiter} <{self.source_hint} '{self.base_identifier}/{identifier}'>"
+        start_delimiter: str = self._get_start_delimiter(identifier=identifier)
 
-        end_delimiter: str = f"{self.line_comment_line_delimiter} </{self.source_hint} '{self.base_identifier}/{identifier}'>"
+        end_delimiter: str = self._get_end_delimiter(identifier=identifier)
         config_file_lines: List[str] = []
         if self.target_file.exists:
             with open(self.target_file, "r") as file:
@@ -144,6 +148,8 @@ class ConfigFileEditor:
             if line == start_delimiter and overwrite_entry_if_exists:
                 record_stop = True
                 updated_existing = True
+                if content is None:
+                    continue
                 new_config_file_lines.append(line.strip("\n"))
                 new_config_file_lines.extend(content)
             elif (
@@ -156,9 +162,11 @@ class ConfigFileEditor:
                 )
             if line == end_delimiter:
                 record_stop = False
-            if not record_stop:
+                if content:
+                    new_config_file_lines.append(line)
+            elif not record_stop:
                 new_config_file_lines.append(line)
-        if not updated_existing:
+        if not updated_existing and content:
             new_config_file_lines.append(start_delimiter)
             new_config_file_lines.extend(content)
             new_config_file_lines.append(end_delimiter)
@@ -166,6 +174,28 @@ class ConfigFileEditor:
         with open(self.target_file, "w") as file:
             file.writelines(line + "\n" for line in new_config_file_lines)
 
+    def remove_config_entry(self, identifier: str):
+        self.create_config_entry(
+            content=None,
+            identifier=identifier,
+            overwrite_entry_if_exists=True,
+            entry_exists_ok=True,
+        )
 
-test = ConfigFileEditor("./test.config")
-# test.create_config_entry("hello=2\nhello_line4", "MY ENTRY", True)
+    def update_config_entry(
+        self,
+        content: Union[str, List[str]],
+        identifier: str,
+    ):
+        self.create_config_entry(
+            content=content,
+            identifier=identifier,
+            overwrite_entry_if_exists=True,
+            entry_exists_ok=True,
+        )
+
+    def _get_start_delimiter(self, identifier: str):
+        return f"{self.line_comment_line_delimiter} <{self.source_hint} '{self.base_identifier}/{identifier}'>"
+
+    def _get_end_delimiter(self, identifier: str):
+        return f"{self.line_comment_line_delimiter} </{self.source_hint} '{self.base_identifier}/{identifier}'>"
