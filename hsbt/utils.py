@@ -105,10 +105,93 @@ class ConfigFileEditor:
         self.create_file_if_not_exists = create_file_if_not_exists
         self.create_mode = create_mode
 
+    class ConfigFile:
+        class Line:
+            def __init__(
+                self, content: str, file: "ConfigFileEditor.ConfigFile" = None
+            ):
+                self.content = content
+                self.file = file
+                self.removed = False
+
+            def remove(self):
+                self.removed = True
+
+            def is_(self, val: str):
+                return self.content == val
+
+            @property
+            def number(self):
+                return self.file.lines.index(self)
+
+            def insert_after(
+                self,
+                lines: Union[
+                    str,
+                    "ConfigFileEditor.ConfigFile.Line",
+                    List[Union[str, "ConfigFileEditor.ConfigFile.Line"]],
+                ],
+            ):
+                if not isinstance(lines, list):
+                    lines = [lines]
+                self.file.insert_lines(lines, self.number)
+
+            def is_last(self):
+                return self.number + 1 == len(self.file.lines)
+
+        def __init__(self, path: Path):
+            self.path = path
+            self.lines: List[ConfigFileEditor.ConfigFile.Line] = []
+            self.cursor: int = None
+            self.current_line = None
+            self.record: bool = True
+
+        def read(self):
+            with open(self.path, "r") as file:
+                for line in file.readlines():
+                    self.lines.append(
+                        ConfigFileEditor.ConfigFile.Line(line.strip("\n"), self)
+                    )
+            self.cursor = 0
+
+        def next_line(self) -> Line:
+            if not self.record and self.current_line:
+                self.current_line.remove()
+            self.current_line = self.lines[self.cursor]
+            self.cursor += 1
+            return self.current_line
+
+        def insert_line(self, line: Union[str, Line], index: int):
+            if isinstance(line, str):
+                line = ConfigFileEditor.ConfigFile.Line(line, self)
+            elif not isinstance(line, ConfigFileEditor.ConfigFile.Line):
+                raise ValueError(
+                    f"Expected 'ConfigFileEditor.ConfigFile.Line' or string type. Got {type(line)}, {line}"
+                )
+            self.lines.insert(index, line)
+            self.cursor += 1
+
+        def insert_lines(self, lines: List[Union[str, Line]], index: int):
+            for no, line in enumerate(lines):
+                self.insert_line(line, index + no)
+
+        def attach_lines(self, lines: List[Union[str, Line]]):
+            for line in lines:
+                self.insert_line(line, len(self.lines))
+
+        def is_empty(self):
+            return len(self.lines) == 0
+
+        def save(self):
+            with open(self.path, "w") as file:
+                file.writelines(
+                    line.content + "\n" for line in self.lines if not line.removed
+                )
+
     def _validate_and_prepare_target(self, supress_creating: bool = False):
         if self.target_file.is_dir():
             raise ValueError(
-                f"Target file {self.target_file} is directory. Expected file."
+                f"Target file {self.target_file} is directory. Expected a file."
             )
         elif self.target_file.is_file():
             if not os.access(self.target_file, os.W_OK):
@@ -121,78 +204,64 @@ class ConfigFileEditor:
         elif not self.target_file.exists() and not self.create_file_if_not_exists:
             raise ValueError(f"Target file {self.target_file} does not exist.")
 
-    def create_config_entry(
+    def get_config_entry(self, identifier) -> List[str]:
+        start_delimiter: str = self._get_start_delimiter(identifier=identifier)
+        end_delimiter: str = self._get_end_delimiter(identifier=identifier)
+        if not self.target_file.exists():
+            return []
+        file = ConfigFileEditor.ConfigFile(path=self.target_file)
+        file.read()
+        if file.is_empty():
+            return []
+        result = []
+        cursor_in_entry: bool = False
+        while True:
+            line = file.next_line()
+            if line.is_(end_delimiter):
+                cursor_in_entry = False
+            if cursor_in_entry:
+                result.append(line.content)
+            if line.is_(start_delimiter):
+                cursor_in_entry = True
+            if line.is_last():
+                break
+        return result
+
+    def set_config_entry(
         self,
         content: Union[str, List[str]],
         identifier: str,
-        overwrite_entry_if_exists: bool = False,
-        entry_exists_ok: bool = False,
     ):
-        # Todo: this function is mess. Improve!
-
         self._validate_and_prepare_target(supress_creating=not bool(content))
-        if isinstance(content, str):
+        if content and not isinstance(content, list):
             content = [content]
         start_delimiter: str = self._get_start_delimiter(identifier=identifier)
-
         end_delimiter: str = self._get_end_delimiter(identifier=identifier)
-        config_file_lines: List[str] = []
-        if self.target_file.exists:
-            with open(self.target_file, "r") as file:
-                for line in file.readlines():
-                    config_file_lines.append(line.strip("\n"))
-        record_stop: bool = False
-        updated_existing: bool = False
-        new_config_file_lines: List[str] = []
-        for line in config_file_lines:
-            if line == start_delimiter and overwrite_entry_if_exists:
-                record_stop = True
-                updated_existing = True
-                if content is None:
-                    continue
-                new_config_file_lines.append(line.strip("\n"))
-                new_config_file_lines.extend(content)
-            elif (
-                line == start_delimiter
-                and not overwrite_entry_if_exists
-                and not entry_exists_ok
-            ):
-                raise ConfigEntryExistsError(
-                    f"Config entry in file '{self.target_file}' with identifier '{start_delimiter}' exists."
-                )
-            if line == end_delimiter:
-                record_stop = False
-                if content:
-                    new_config_file_lines.append(line)
-            elif not record_stop:
-                new_config_file_lines.append(line)
-        if not updated_existing and content:
-            new_config_file_lines.append(start_delimiter)
-            new_config_file_lines.extend(content)
-            new_config_file_lines.append(end_delimiter)
 
-        with open(self.target_file, "w") as file:
-            file.writelines(line + "\n" for line in new_config_file_lines)
+        file = ConfigFileEditor.ConfigFile(path=self.target_file)
+        file.read()
+        content_inserted: bool = False
+        if not file.is_empty():
+            while True:
+                line = file.next_line()
+                if line.is_(start_delimiter):
+                    line.remove()
+                    file.record = False
+                if line.is_(end_delimiter):
+                    line.remove()
+                    file.record = True
+                    if content:
+                        line.insert_after([start_delimiter] + content + [end_delimiter])
+                    content_inserted = True
+                if line.is_last():
+                    break
+        if not content_inserted and content:
+            file.attach_lines([start_delimiter] + content + [end_delimiter])
+        file.save()
+        return
 
     def remove_config_entry(self, identifier: str):
-        self.create_config_entry(
-            content=None,
-            identifier=identifier,
-            overwrite_entry_if_exists=True,
-            entry_exists_ok=True,
-        )
-
-    def update_config_entry(
-        self,
-        content: Union[str, List[str]],
-        identifier: str,
-    ):
-        self.create_config_entry(
-            content=content,
-            identifier=identifier,
-            overwrite_entry_if_exists=True,
-            entry_exists_ok=True,
-        )
+        self.set_config_entry(content=None, identifier=identifier)
 
     def _get_start_delimiter(self, identifier: str):
         return f"{self.line_comment_line_delimiter} <{self.source_hint} '{self.base_identifier}/{identifier}'>"

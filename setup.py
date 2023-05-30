@@ -30,5 +30,5 @@ setup(
         "write_to": "version.py",
     },
     setup_requires=["setuptools_scm"],
-    entry_points={"console_scripts": ["hsbt=hsbt.main:main"]},
+    entry_points={"console_scripts": ["hsbt=hsbt.cli:main"]},
 )
