@@ -63,18 +63,18 @@ class HetznerStorageBox:
     def check_if_public_key_is_deployed(self):
         self.get_key_manager()
         result = run_command(
-            f"""ssh -v -t -i {self.key_manager.private_key_path} -o PasswordAuthentication=no \
+            f"""ssh -v -i {self.key_manager.private_key_path} -o PasswordAuthentication=no \
                 -o PreferredAuthentications=publickey -o StrictHostKeyChecking=no \
                 -o UserKnownHostsFile={self.key_manager.known_host_path} {self.user}@{self.host} exit 2>&1 | grep 'Authentication succeeded'"""
         )
 
-    def _run_remote_ssh_command(self, command: str):
+    def _run_remote_ssh_command(self, command: str) -> str:
         remote_command = f"ssh -p23 -i {self.key_manager.private_key_path} \
             -o PreferredAuthentications=publickey \
             -o UserKnownHostsFile={self.key_manager.known_host_path} \
             {self.user}@{self.host} \
             {command}"
-        run_command(remote_command)
+        return run_command(remote_command)
 
     def create_remote_directory(self, path: Union[str, Path]):
         if not isinstance(path, Path):
@@ -87,7 +87,7 @@ class HetznerStorageBox:
 
     def mount_storage_box_via_fstab(self):
         # wip: work on this example. its just mockup code
-        fstab_entry = f"{self.storage_box_username}@{self.storage_box_hostname}:/ {self.local_mount_point} fuse.sshfs IdentityFile={self.keyfile_path},delay_connect,_netdev,user,idmap=user 0 0"
+        fstab_entry = f"{self.storage_box_username}@{self.storage_box_hostname}:/ {self.local_mount_point} fuse.sshfs IdentityFile={self.keyfile_path},_netdev,nofail,delay_connect,_netdev,user,idmap=user 0 0"
         with open("/etc/fstab", "a") as f:
             f.write(fstab_entry)
 

@@ -43,7 +43,7 @@ def unzip_file(zip_file: Union[str, Path, BinaryIO], target_dir: Path):
 def run_command(
     command: Union[List[str], str],
     extra_envs: Dict[str, str] = None,
-):
+) -> str:
     if extra_envs is None:
         extra_envs = {}
     if isinstance(command, str):
