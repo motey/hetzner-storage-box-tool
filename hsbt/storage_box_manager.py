@@ -2,7 +2,7 @@ from typing import Union, Dict, List
 
 from pathlib import Path
 
-from hsbt.utils import run_command, convert_df_output_to_dict
+from hsbt.utils import run_command, convert_df_output_to_dict, ConfigFileEditor
 from hsbt.key_manager import KeyManager
 
 
@@ -85,17 +85,43 @@ class HetznerStorageBox:
         # wip
         pass
 
-    def mount_storage_box_via_fstab(self):
+    def mount_storage_box_via_fstab_via_sshfs(self):
         # wip: work on this example. its just mockup code
-        fstab_entry = f"{self.storage_box_username}@{self.storage_box_hostname}:/ {self.local_mount_point} fuse.sshfs IdentityFile={self.keyfile_path},_netdev,nofail,delay_connect,_netdev,user,idmap=user 0 0"
+        fstab_entry = f"{self.storage_box_username}@{self.storage_box_hostname}:/ {self.local_mount_point} fuse.sshfs IdentityFile={self.keyfile_path},_netdev,nofail,delay_connect,_netdev,user,idmap=user,reconnect 0 0"
         with open("/etc/fstab", "a") as f:
             f.write(fstab_entry)
 
-    def mount_storage_box_via_autofs(self):
+    def mount_storage_box_via_fstab_with_rclone(self):
+        # https://rclone.org/commands/rclone_mount/
+        pass
+
+    def mount_storage_box_via_autofs_with_sshfs(self):
         # wip: work on this example. its just mockup code
+        # https://community.hetzner.com/tutorials/setup-autofs-mount-storagebox
         sshfs_cmd = f"sshfs -o password_stdin {self.storage_box_username}@{self.storage_box_hostname}:/ {self.local_mount_point}"
         sshfs_proc = subprocess.Popen(sshfs_cmd, stdin=subprocess.PIPE, shell=True)
         sshfs_proc.communicate(input=self.storage_box_password.encode())
+
+    def mount_storage_box_via_autofs_with_rclone(self):
+        # https://rclone.org/commands/rclone_mount/
+        pass
+
+    def mount_storage_box_via_automount_with_sshfs(self):
+        # wip: work on this example. its just mockup code
+        # https://community.hetzner.com/tutorials/setup-autofs-mount-storagebox
+        sshfs_cmd = f"sshfs -o password_stdin {self.storage_box_username}@{self.storage_box_hostname}:/ {self.local_mount_point}"
+        sshfs_proc = subprocess.Popen(sshfs_cmd, stdin=subprocess.PIPE, shell=True)
+        sshfs_proc.communicate(input=self.storage_box_password.encode())
+
+    def mount_storage_box_via_automount_with_rclone(self):
+        # https://rclone.org/commands/rclone_mount/
+        pass
+
+    def temp_mount_storage_box_via_sshfs():
+        pass
+
+    def temp_mount_storage_box_via_rclone():
+        pass
 
     def get_available_space(self, human_readable: bool = False) -> Dict:
         # https://docs.hetzner.com/robot/storage-box/available-disk-space
