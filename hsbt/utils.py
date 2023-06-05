@@ -5,6 +5,7 @@ from pathlib import Path, PurePath
 from typing import Union, List, BinaryIO, Dict
 import subprocess
 import logging
+from dataclasses import dataclass
 
 log = logging.getLogger(__name__)
 
@@ -40,34 +41,40 @@ def unzip_file(zip_file: Union[str, Path, BinaryIO], target_dir: Path):
         zip_ref.extractall(target_dir)
 
 
+@dataclass
+class CommandResult:
+    command: str = None
+    stdout: str = None
+    stderr: str = None
+    return_code: str = None
+
+
 def run_command(
     command: Union[List[str], str],
     extra_envs: Dict[str, str] = None,
-) -> str:
+    raise_error: bool = True,
+) -> CommandResult:
     if extra_envs is None:
         extra_envs = {}
     if isinstance(command, str):
         command = [command]
-    command = ["/bin/bash", "-c"] + command
+    prefixed_command = ["/bin/bash", "-c"] + command
 
-    # print("comamnd:", type(command), command)
-    # print("RUN#:", " ".join(command))
     current_env: Dict[str, str] = os.environ.copy()
-    log.debug(f"RUN COMMAND: {' '.join(command)}")
+    log.debug(f"RUN COMMAND: {' '.join(prefixed_command)}")
     proc = subprocess.run(
-        command, capture_output=True, text=True, env=current_env | extra_envs
+        prefixed_command, capture_output=True, text=True, env=current_env | extra_envs
     )
-    if proc.stderr:
-        e_msg = (
-            f"Command '{command}'. ErrorCode: {proc.returncode} Error:\n{proc.stderr}"
-        )
+    log.debug(f"COMMAND stdout: `{proc.stdout}`")
+    if proc.returncode != 0 and raise_error:
+        e_msg = f"""Command '{" ".join(command)}'. ErrorCode: {proc.returncode} {'Error:' + os.linesep + proc.stderr if proc.stderr else ''}"""
         # log.error(e_msg)
         raise ChildProcessError(
             e_msg,
             proc.returncode,
         )
-    log.debug(f"COMMAND RESULT: {proc.stdout}")
-    return proc.stdout
+
+    return CommandResult(" ".join(command), proc.stdout, proc.stderr, proc.returncode)
 
 
 def convert_df_output_to_dict(df_output):

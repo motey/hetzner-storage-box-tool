@@ -73,7 +73,7 @@ class KeyManager:
             self.public_key_rfc_path = target_path
             return target_path
         run_command(
-            f"ssh-keygen -e -f {self.public_key_file} -m RFC4716 > {target_path}"
+            f"ssh-keygen -e -f {self.public_key_path} -m RFC4716 > {target_path}"
         )
         self.public_key_rfc_path = target_path
         return target_path
@@ -92,6 +92,7 @@ class KeyManager:
     def _get_known_host_path(self):
         if self.known_host_path is None:
             self.known_host_path: Path = Path(PurePath(self.target_dir, "known_hosts"))
+        return self.known_host_path
 
     def create_know_host_entry_if_not_exists(self, host: str):
         know_host_file: Path = self._get_known_host_path()
@@ -110,7 +111,7 @@ class KeyManager:
             result = run_command(f"ssh-keygen -F {host} -f {know_host_file}")
         except:
             return False
-        if result:
+        if result.stdout:
             return True
         return False
 

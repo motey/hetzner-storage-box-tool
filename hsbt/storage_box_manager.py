@@ -1,9 +1,11 @@
 from typing import Union, Dict, List
-
+import logging
 from pathlib import Path
 
 from hsbt.utils import run_command, convert_df_output_to_dict, ConfigFileEditor
 from hsbt.key_manager import KeyManager
+
+log = logging.getLogger(__name__)
 
 
 class DeployKeyPasswordMissingError(Exception):
@@ -40,13 +42,15 @@ class HetznerStorageBox:
         if self.key_manager is None:
             self.add_key_manager()
 
-    def deploy_public_key_if_not_done(self):
+    def deploy_public_key_if_not_done(
+        self, openssh_format: bool = True, rfc_format: bool = True
+    ):
         self.get_key_manager()
         self.key_manager.create_know_host_entry_if_not_exists(self.host)
         if self.key_manager.private_key_path is None:
             self.key_manager.ssh_keygen(exists_ok=True)
 
-        if self.check_if_public_key_is_deployed(self.key_manager.private_key_path):
+        if self.check_if_public_key_is_deployed():
             return
         if not self.password:
             raise DeployKeyPasswordMissingError(
@@ -60,13 +64,19 @@ class HetznerStorageBox:
 
         return
 
-    def check_if_public_key_is_deployed(self):
+    def check_if_public_key_is_deployed(self) -> bool:
         self.get_key_manager()
         result = run_command(
-            f"""ssh -v -i {self.key_manager.private_key_path} -o PasswordAuthentication=no \
-                -o PreferredAuthentications=publickey -o StrictHostKeyChecking=no \
-                -o UserKnownHostsFile={self.key_manager.known_host_path} {self.user}@{self.host} exit 2>&1 | grep 'Authentication succeeded'"""
+            f"""ssh -v -o IdentityFile={self.key_manager.private_key_path} -o IdentitiesOnly=yes -o PasswordAuthentication=no \
+                -o PreferredAuthentications=publickey -o StrictHostKeyChecking=Yes \
+                -o UserKnownHostsFile={self.key_manager.known_host_path} {self.user}@{self.host} exit 2>&1 | grep 'Authentication succeeded'""",
+            raise_error=False,
         )
+        if result.return_code != 0:
+            log.debug(
+                f"Publickey is not deployd. Result check command: `{result.command}`, error Code `{result.return_code}` error message: `{result.stderr}`"
+            )
+        return result.stdout == "Authentication succeeded"
 
     def _run_remote_ssh_command(self, command: str) -> str:
         remote_command = f"ssh -p23 -i {self.key_manager.private_key_path} \
