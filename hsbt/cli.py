@@ -1,5 +1,6 @@
 import click
 
+
 @click.command()
 @click.option("--count", default=1, help="Number of greetings.")
 @click.option("--name", prompt="Your name", help="The person to greet.")
@@ -8,30 +9,39 @@ def main(count, name):
     for _ in range(count):
         click.echo(f"Hello, {name}!")
 
-def check_if_key_is_deployed():
-    pass
 
-def deploy_key():
-    pass
-
-def generate_key():
-    pass
-
-def mount_auto_fs():
-    pass
-
-def mount_fstab():
-    pass
-
-def ls_remote():
-    pass
-
-def download_remote():
-    pass
-
-def upload_remote():
+def create_connection(connection_identifier: str):
+    # save connection params as json in /etc/hetzner_connections.json when root or ~/.config/hetzner_connections.json if non root
+    # exchange key with hetzner storage box.
     pass
 
 
-if __name__ == '__main__':
+def list_connections():
+    pass
+
+
+def run_remote_command(connection_identifier: str):
+    # allowd commands https://docs.hetzner.com/de/robot/storage-box/access/access-ssh-rsync-borg#verfugbare-befehle
+    # if identifier is passed check for matching connection params in /etc/hetzner_connections.json or ~/.config/hetzner_connections.json
+    # othwerwise params must be passed as function params
+    pass
+
+
+def mount(connection_identifier: str):
+    pass
+
+
+def available_space(connection_identifier: str):
+    pass
+
+
+def download_from_remote(connection_identifier: str):
+    pass
+
+
+def upload_to_remote(connection_identifier: str):
+    pass
+
+
+if __name__ == "__main__":
     main()

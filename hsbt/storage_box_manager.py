@@ -1,8 +1,13 @@
-from typing import Union, Dict, List
+from typing import Union, Dict, List, Literal
 import logging
 from pathlib import Path
-
-from hsbt.utils import run_command, convert_df_output_to_dict, ConfigFileEditor
+import os
+from hsbt.utils import (
+    run_command,
+    convert_df_output_to_dict,
+    ConfigFileEditor,
+    CommandResult,
+)
 from hsbt.key_manager import KeyManager
 
 log = logging.getLogger(__name__)
@@ -30,7 +35,10 @@ class HetznerStorageBox:
         self.remote_path = remote_dir
         self.host = host
         self.user = user
+
         self.password = password
+        if self.password is None:
+            os.getenv("HSBT_PASSWORD", None)
         self.key_manager: KeyManager = key_manager
 
     def add_key_manager(self, key_manager: KeyManager = None):
@@ -41,6 +49,31 @@ class HetznerStorageBox:
     def get_key_manager(self) -> KeyManager:
         if self.key_manager is None:
             self.add_key_manager()
+
+    def upload_file(self, local_path: Union[str, Path], remote_path: Union[str, Path]):
+        if not isinstance(local_path, Path):
+            local_path: Path = Path(local_path)
+        if remote_path and not isinstance(local_path, Path):
+            remote_path: Path = Path(remote_path)
+        self.run_remote_command(
+            f":{str(remote_path)}", extra_params={str(local_path): ""}, executor="scp"
+        )
+
+    def download_file(
+        self, remote_path: Union[str, Path], local_path: Union[str, Path]
+    ):
+        if not isinstance(local_path, Path):
+            local_path: Path = Path(local_path)
+        if remote_path and not isinstance(local_path, Path):
+            remote_path: Path = Path(remote_path)
+        self.run_remote_command(
+            f":{str(remote_path)} {str(local_path)}", executor="scp"
+        )
+
+    def _get_remote_authorized_keys(self):
+        run_command(
+            "sshpass -e sftp -oStrictHostKeyChecking=no -oPort=22 ${STORAGE_BOX_USER}@${STORAGE_BOX} <<<'mkdir /.ssh'"
+        )
 
     def deploy_public_key_if_not_done(
         self, openssh_format: bool = True, rfc_format: bool = True
@@ -54,7 +87,7 @@ class HetznerStorageBox:
             return
         if not self.password:
             raise DeployKeyPasswordMissingError(
-                f"To deploy the SSH Key at {self.host} the first time, storage box password must be provided. After that future connections will be authorized by the deployd key and no password is needed anymore."
+                f"To deploy your public SSH Key (`{self.key_manager.public_key_path}`) at `{self.host}` the first time, storage box password must be provided. After that future connections will be authorized by the deployed key and no password is required anymore."
             )
         run_command(
             f"cat {self.key_manager.public_key_path} | sshpass -e ssh -p23 {self.user}@{self.host} install-ssh-key",
@@ -65,31 +98,113 @@ class HetznerStorageBox:
         return
 
     def check_if_public_key_is_deployed(self) -> bool:
+        # https://docs.hetzner.com/de/robot/storage-box/backup-space-ssh-keys
         self.get_key_manager()
-        result = run_command(
-            f"""ssh -v -o IdentityFile={self.key_manager.private_key_path} -o IdentitiesOnly=yes -o PasswordAuthentication=no \
-                -o PreferredAuthentications=publickey -o StrictHostKeyChecking=Yes \
-                -o UserKnownHostsFile={self.key_manager.known_host_path} {self.user}@{self.host} exit 2>&1 | grep 'Authentication succeeded'""",
+        command_result: CommandResult = self.run_remote_command(
+            "exit",
+            on_keyauth_fail_retry_with_pw_auth=False,
+            verbose=True,
+            return_stdout_only=False,
             raise_error=False,
         )
-        if result.return_code != 0:
+        if command_result.return_code == 255:
             log.debug(
-                f"Publickey is not deployd. Result check command: `{result.command}`, error Code `{result.return_code}` error message: `{result.stderr}`"
+                f"Your local public key ('{self.key_manager.public_key_path}') is probably not deployed at your Hetzner Storage Box ('{self.host}'). Check debug output for more details if needed. Executed command: `{command_result.command}`, Result error code: `{command_result.return_code}`, debug output: `{command_result.stderr}`"
             )
-        return result.stdout == "Authentication succeeded"
+            return False
+        elif command_result.return_code == 0:
+            return True
+        else:
+            log.error("Could determine ")
 
-    def _run_remote_ssh_command(self, command: str) -> str:
-        remote_command = f"ssh -p23 -i {self.key_manager.private_key_path} \
-            -o PreferredAuthentications=publickey \
-            -o UserKnownHostsFile={self.key_manager.known_host_path} \
-            {self.user}@{self.host} \
-            {command}"
-        return run_command(remote_command)
+    def _get_ssh_options(
+        self, pw: str = None, verbose: bool = True, extra_params: Dict = None
+    ) -> Dict:
+        options: Dict = {}
+        if verbose:
+            options = options | {
+                "-v": "",
+            }
+        options = options | {
+            "-o StrictHostKeyChecking=": "yes",
+            "-o UserKnownHostsFile=": str(self.key_manager._get_known_host_path()),
+            "-o Port=": "23",
+        }
+
+        if pw:
+            options = options | {
+                "-o PreferredAuthentications=": "password",
+                "-o PasswordAuthentication=": "yes",
+                "-o PubkeyAuthentication=": "no",
+            }
+        else:
+            options = options | {
+                "-o PreferredAuthentications=": "publickey",
+                "-o PasswordAuthentication=": "no",
+                "-o IdentityFile=": str(self.key_manager.private_key_path),
+                "-o IdentitiesOnly=": "yes",
+                "-o PubkeyAuthentication=": "yes",
+            }
+        # it is important to keep adding extra params at the end. this enables the caller to add string just before {self.user}@{self.host} so we can create scp commands as well
+        if extra_params:
+            options = options | extra_params
+
+        return options
+
+    def run_remote_command(
+        self,
+        command: str,
+        pw: str = None,
+        executor: Literal["ssh", "scp"] = "ssh",
+        on_keyauth_fail_retry_with_pw_auth: bool = True,
+        extra_params: Dict = None,
+        verbose: bool = True,
+        return_stdout_only: bool = True,
+        raise_error: bool = True,
+    ) -> str | CommandResult:
+        options = self._get_ssh_options(
+            pw=pw, verbose=verbose, extra_params=extra_params
+        )
+        if executor == "ssh":
+            # ssh commands are added after the base command. scp params are added directly to the remote {self.user}@{self.host} part.
+            # therefore we need to add a space to ssh commands
+            command = f" {command}"
+
+        remote_command = f"{'sshpass -e' if pw else ''} {executor} {' '.join([k+v for k,v in options.items()])} {self.user}@{self.host}{command}"
+
+        command_result = run_command(
+            remote_command, extra_envs={"SSHPASS": pw} if pw else {}, raise_error=False
+        )
+        if (
+            command_result.return_code != 0
+            and on_keyauth_fail_retry_with_pw_auth
+            and self.password is not None
+        ):
+            # return code 255 means a ssh error. No connection could be established
+            # propably there is an problem with the ssh key or its just not deployed yet.
+            # if the password provided by the caller in this 'HetznerStorageBox'-instance we can retry it with a password provided connection
+
+            log.debug(
+                f"Retry ssh remote command '{command}' with password authentication"
+            )
+            return self.run_remote_command(
+                command=command,
+                pw=self.password,
+                executor=executor,
+                on_keyauth_fail_retry_with_pw_auth=False,
+                extra_params=extra_params,
+                verbose=verbose,
+                return_stdout_only=return_stdout_only,
+                raise_error=raise_error,
+            )
+        elif command_result.return_code != 0 and raise_error:
+            raise command_result.error_for_raise
+        return command_result.stdout if return_stdout_only else command_result
 
     def create_remote_directory(self, path: Union[str, Path]):
         if not isinstance(path, Path):
             path: Path = Path(path)
-        self._run_remote_ssh_command(f"mkdir -p {path}")
+        self.run_remote_command(f"mkdir -p {path}")
 
     def storage_box_is_mounted(self):
         # wip

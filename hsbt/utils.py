@@ -10,6 +10,10 @@ from dataclasses import dataclass
 log = logging.getLogger(__name__)
 
 
+def is_root():
+    return os.geteuid() == 0
+
+
 def download_file(
     url: str, target: Union[str, Path, BinaryIO]
 ) -> Union[Path, BinaryIO]:
@@ -47,6 +51,7 @@ class CommandResult:
     stdout: str = None
     stderr: str = None
     return_code: str = None
+    error_for_raise: ChildProcessError = None
 
 
 def run_command(
@@ -66,15 +71,18 @@ def run_command(
         prefixed_command, capture_output=True, text=True, env=current_env | extra_envs
     )
     log.debug(f"COMMAND stdout: `{proc.stdout}`")
-    if proc.returncode != 0 and raise_error:
+    log.debug(f"COMMAND stderr: `{proc.stderr}`")
+    log.debug(f"COMMAND return code: `{proc.returncode}`")
+    result = CommandResult(" ".join(command), proc.stdout, proc.stderr, proc.returncode)
+    if result.return_code != 0:
         e_msg = f"""Command '{" ".join(command)}'. ErrorCode: {proc.returncode} {'Error:' + os.linesep + proc.stderr if proc.stderr else ''}"""
-        # log.error(e_msg)
-        raise ChildProcessError(
+        result.error_for_raise = ChildProcessError(
             e_msg,
             proc.returncode,
         )
-
-    return CommandResult(" ".join(command), proc.stdout, proc.stderr, proc.returncode)
+        if raise_error:
+            raise result.error_for_raise
+    return result
 
 
 def convert_df_output_to_dict(df_output):
