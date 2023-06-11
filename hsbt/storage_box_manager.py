@@ -1,14 +1,20 @@
 from typing import Union, Dict, List, Literal
 import logging
-from pathlib import Path
+from pathlib import Path, PurePath
 import os
 from hsbt.utils import (
     run_command,
+    cast_path,
     convert_df_output_to_dict,
     ConfigFileEditor,
     CommandResult,
+    FileInfoCollection,
+    FileInfo,
+    parse_ls_l_output,
 )
 from hsbt.key_manager import KeyManager
+from hsbt.connection_manager import ConnectionManager
+import uuid
 
 log = logging.getLogger(__name__)
 
@@ -20,79 +26,130 @@ class DeployKeyPasswordMissingError(Exception):
 class HetznerStorageBox:
     def __init__(
         self,
-        local_mount_point: Union[str, Path],
         host: str,
         user: str,
         password: str = None,
         key_manager: KeyManager = None,
-        remote_dir: Union[str, Path] = "/",
+        remote_dir: str | Path = "/",
     ):
-        if not isinstance(local_mount_point, Path):
-            local_mount_point: Path = Path(local_mount_point)
-        if not isinstance(remote_dir, Path):
-            remote_dir: Path = Path(remote_dir)
-        self.local_mount_point = local_mount_point
-        self.remote_path = remote_dir
-        self.host = host
-        self.user = user
+        if remote_dir is None:
+            remote_dir = "/"
+        self.remote_base_path: Path = cast_path(remote_dir)
+        self.host: str = host
+        self.user: str = user
 
-        self.password = password
+        self.password: str = password
         if self.password is None:
             os.getenv("HSBT_PASSWORD", None)
         self.key_manager: KeyManager = key_manager
 
+    @classmethod
+    def from_connection(cls, con: ConnectionManager.Connection):
+        return HetznerStorageBox(
+            host=con.host,
+            user=con.user,
+            password=None,
+            key_manager=KeyManager(target_dir=con.key_dir, identifier=con.identifier),
+        )
+
+    def _create_remote_directory(self, path: str | Path):
+        path = cast_path(path)
+        if not isinstance(path, Path):
+            path: Path = Path(path)
+        self.run_remote_command(f"mkdir -p {path}")
+
+    def create_remote_directory(self, path: str | Path):
+        path = cast_path([path])
+        self.run_remote_command(f"mkdir -p {path}")
+
+    def _upload_file(self, local_path: str | Path, remote_path: str | Path):
+        remote_path: Path = cast_path(remote_path)
+        local_path: Path = cast_path(local_path)
+        self.run_remote_command(
+            f":{str(remote_path)}", extra_params={str(local_path): ""}, executor="scp"
+        )
+
+    def upload_file(self, local_path: str | Path, remote_path: str | Path):
+        remote_path: Path = self._inject_base_path_to_abs_path(remote_path)
+        local_path: Path = cast_path(local_path)
+        self._upload_file(local_path=local_path, remote_path=remote_path)
+
+    def download_file(self, remote_path: str | Path, local_path: str | Path):
+        remote_path: Path = self._inject_base_path_to_abs_path(remote_path)
+        local_path: Path = cast_path(local_path)
+        self._download_file(remote_path=remote_path, local_path=local_path)
+
+    def _download_file(self, remote_path: str | Path, local_path: str | Path):
+        remote_path: Path = cast_path(remote_path)
+        local_path: Path = cast_path(local_path)
+        self.run_remote_command(
+            f":{str(remote_path)} {str(local_path)}", executor="scp"
+        )
+
+    def _list_remote_files(self, remote_path: str | Path) -> FileInfoCollection:
+        remote_path = cast_path(remote_path)
+        return parse_ls_l_output(self.run_remote_command(f"ls -la {remote_path}"))
+
+    def list_remote_files(self, remote_path: str | Path) -> FileInfoCollection:
+        remote_path: Path = self._inject_base_path_to_abs_path(remote_path)
+        return self._list_remote_files(remote_path)
+
+    def get_available_space(self, human_readable_file_sizes: bool = False) -> Dict:
+        # https://docs.hetzner.com/robot/storage-box/available-disk-space
+        return convert_df_output_to_dict(
+            self.run_remote_command(f"df{' -h' if human_readable_file_sizes else ''}")
+        )
+
     def add_key_manager(self, key_manager: KeyManager = None):
         if key_manager is None:
-            key_manager = KeyManager(identifier=f"hsbt_{self.user}")
+            key_manager = KeyManager(identifier=self.user)
         self.key_manager = key_manager
 
     def get_key_manager(self) -> KeyManager:
         if self.key_manager is None:
             self.add_key_manager()
+        return self.key_manager
 
-    def upload_file(self, local_path: Union[str, Path], remote_path: Union[str, Path]):
-        if not isinstance(local_path, Path):
-            local_path: Path = Path(local_path)
-        if remote_path and not isinstance(local_path, Path):
-            remote_path: Path = Path(remote_path)
-        self.run_remote_command(
-            f":{str(remote_path)}", extra_params={str(local_path): ""}, executor="scp"
+    def _get_remote_authorized_keys(
+        self, generate_empty_file_if_not_exist: bool = True
+    ) -> Path:
+        target_local_path: Path = Path(f"/tmp/{uuid.uuid4().hex}")
+        if (
+            self._list_remote_files(".").get_file_info(".ssh") is None
+            or self._list_remote_files(".ssh").get_file_info("authorized_keys") is None
+        ) and generate_empty_file_if_not_exist:
+            self.run_remote_command("mkdir -p .ssh")
+            self.run_remote_command("touch .ssh/authorized_keys")
+        self._download_file(
+            remote_path=".ssh/authorized_keys", local_path=target_local_path
         )
+        return target_local_path
 
-    def download_file(
-        self, remote_path: Union[str, Path], local_path: Union[str, Path]
-    ):
-        if not isinstance(local_path, Path):
-            local_path: Path = Path(local_path)
-        if remote_path and not isinstance(local_path, Path):
-            remote_path: Path = Path(remote_path)
-        self.run_remote_command(
-            f":{str(remote_path)} {str(local_path)}", executor="scp"
-        )
-
-    def _get_remote_authorized_keys(self):
-        run_command(
-            "sshpass -e sftp -oStrictHostKeyChecking=no -oPort=22 ${STORAGE_BOX_USER}@${STORAGE_BOX} <<<'mkdir /.ssh'"
-        )
-
-    def deploy_public_key_if_not_done(
-        self, openssh_format: bool = True, rfc_format: bool = True
-    ):
+    def deploy_public_key_if_not_done(self, sftp_mode: bool = False):
         self.get_key_manager()
-        self.key_manager.create_know_host_entry_if_not_exists(self.host)
+        self.key_manager.create_known_host_entry_if_not_exists(self.host)
         if self.key_manager.private_key_path is None:
             self.key_manager.ssh_keygen(exists_ok=True)
-
         if self.check_if_public_key_is_deployed():
             return
         if not self.password:
             raise DeployKeyPasswordMissingError(
                 f"To deploy your public SSH Key (`{self.key_manager.public_key_path}`) at `{self.host}` the first time, storage box password must be provided. After that future connections will be authorized by the deployed key and no password is required anymore."
             )
-        run_command(
-            f"cat {self.key_manager.public_key_path} | sshpass -e ssh -p23 {self.user}@{self.host} install-ssh-key",
-            extra_envs={"SSHPASS": self.password},
+        options = {"-s": ""} if sftp_mode else {}
+        result: CommandResult = self.run_remote_command(
+            "",
+            executor="ssh-copy-id",
+            extra_params={"-i ": str(self.key_manager.public_key_path)} | options,
+            verbose=False,
+            return_stdout_only=False,
+            raise_error=False,
         )
+        if 'ssh-copy-id is only supported with the "-s" argument.' in result.stdout:
+            self.deploy_public_key_if_not_done(sftp_mode=True)
+        elif result.error_for_raise:
+            raise result.error_for_raise
+
         self.check_if_public_key_is_deployed(self.key_manager.private_key_path)
 
         return
@@ -118,7 +175,11 @@ class HetznerStorageBox:
             log.error("Could determine ")
 
     def _get_ssh_options(
-        self, pw: str = None, verbose: bool = True, extra_params: Dict = None
+        self,
+        pw: str = None,
+        verbose: bool = True,
+        extra_params: Dict = None,
+        only_ssh_o_options: bool = False,
     ) -> Dict:
         options: Dict = {}
         if verbose:
@@ -148,6 +209,12 @@ class HetznerStorageBox:
         # it is important to keep adding extra params at the end. this enables the caller to add string just before {self.user}@{self.host} so we can create scp commands as well
         if extra_params:
             options = options | extra_params
+        if only_ssh_o_options:
+            filtered_options: Dict = {}
+            for key, val in options.items():
+                if key.startswith("-o "):
+                    filtered_options[key.lstrip("-o ")] = val
+            return filtered_options
 
         return options
 
@@ -155,10 +222,10 @@ class HetznerStorageBox:
         self,
         command: str,
         pw: str = None,
-        executor: Literal["ssh", "scp"] = "ssh",
+        executor: Literal["ssh", "scp", "ssh-copy-id"] = "ssh",
         on_keyauth_fail_retry_with_pw_auth: bool = True,
         extra_params: Dict = None,
-        verbose: bool = True,
+        verbose: bool = False,
         return_stdout_only: bool = True,
         raise_error: bool = True,
     ) -> str | CommandResult:
@@ -201,43 +268,56 @@ class HetznerStorageBox:
             raise command_result.error_for_raise
         return command_result.stdout if return_stdout_only else command_result
 
-    def create_remote_directory(self, path: Union[str, Path]):
-        if not isinstance(path, Path):
-            path: Path = Path(path)
-        self.run_remote_command(f"mkdir -p {path}")
-
     def storage_box_is_mounted(self):
         # wip
-        pass
+        raise NotImplementedError()
 
     def _mount_via_fstab(
         self,
         identifier: str,
         fstab_entry: str,
+        local_mountpoint: str | Path = None,
         fstab_file: Union[str, Path] = "/etc/fstab",
         remove: bool = True,
     ):
+        if local_mountpoint is None:
+            local_mountpoint = Path(f"/mnt/{self.key_manager.identifier}")
+        else:
+            local_mountpoint = cast_path(local_mountpoint)
         fstab = ConfigFileEditor(fstab_file)
         if remove:
             run_command(f"umount --fstab {fstab.target_file} -a")
             fstab.remove_config_entry(identifier)
-
         else:
             fstab.set_config_entry(
                 fstab_entry,
                 identifier=identifier,
             )
-            self.local_mount_point.mkdir(parents=True, exist_ok=True)
+            local_mountpoint.mkdir(parents=True, exist_ok=True)
             run_command(f"mount --fstab {fstab.target_file} -a")
 
     def mount_storage_box_via_fstab_via_sshfs(
-        self, fstab_file: Union[str, Path] = "/etc/fstab", remove: bool = False
+        self,
+        local_mountpoint: str | Path = None,
+        fstab_file: Union[str, Path] = "/etc/fstab",
+        remove: bool = False,
+        user_id: str | int = None,
+        group_id: str | int = None,
     ):
-        identifier = (
-            f"{self.user}@{self.host}:{self.remote_path} {self.local_mount_point}"
-        )
-        fstab_entry = f"{self.user}@{self.host}:{self.remote_path} {self.local_mount_point} fuse.sshfs IdentityFile={self.key_manager.private_key_path},_netdev,nofail,delay_connect,_netdev,user,idmap=user,reconnect 0 0"
+        if user_id is None:
+            user_id = os.getuid()
+        if group_id is None:
+            group_id = os.getgid()
+        user_id = str(user_id)
+        group_id = str(group_id)
+        identifier = f"{self.user}@{self.host}:{self.remote_base_path} {local_mountpoint} {self.key_manager.identifier}"
+        options = self._get_ssh_options(pw=None, verbose=False, only_ssh_o_options=True)
+        # hackfix - PubkeyAuthentication is not compatible iwth fuse.sshfs
+        options.pop("PubkeyAuthentication=")
+        # /hackfix
+        fstab_entry = f"{self.user}@{self.host}:{self.remote_base_path} {local_mountpoint} fuse.sshfs {','.join(k+v for k,v in  options.items())},_netdev,delay_connect,users,user_id={user_id},group_id={group_id},reconnect 0 0"
         self._mount_via_fstab(
+            local_mountpoint=local_mountpoint,
             identifier=identifier,
             fstab_entry=fstab_entry,
             fstab_file=fstab_file,
@@ -245,15 +325,18 @@ class HetznerStorageBox:
         )
 
     def mount_storage_box_via_fstab_with_rclone(
-        self, fstab_file: Union[str, Path] = "/etc/fstab", remove: bool = False
+        self,
+        local_mountpoint: str | Path = None,
+        fstab_file: Union[str, Path] = "/etc/fstab",
+        remove: bool = False,
     ):
         # https://rclone.org/commands/rclone_mount/
         # sftp1:subdir /mnt/data rclone rw,noauto,nofail,_netdev,x-systemd.automount,args2env,vfs_cache_mode=writes,config=/etc/rclone.conf,cache_dir=/var/cache/rclone 0 0
         raise NotImplementedError()
         identifier = (
-            f"{self.user}@{self.host}:{self.remote_path} {self.local_mount_point}"
+            f"{self.user}@{self.host}:{self.remote_base_path} {self.local_mount_point}"
         )
-        fstab_entry = f"{self.user}@{self.host}:{self.remote_path} {self.local_mount_point} rclone IdentityFile={self.key_manager.private_key_path},_netdev,nofail,delay_connect,_netdev,user,idmap=user,reconnect 0 0"
+        fstab_entry = f"{self.user}@{self.host}:{self.remote_base_path} {self.local_mount_point} rclone IdentityFile={self.key_manager.private_key_path},_netdev,nofail,delay_connect,_netdev,user,idmap=user,reconnect 0 0"
         self._mount_via_fstab(
             identifier=identifier,
             fstab_entry=fstab_entry,
@@ -292,8 +375,9 @@ class HetznerStorageBox:
     def temp_mount_storage_box_via_rclone():
         raise NotImplementedError()
 
-    def get_available_space(self, human_readable: bool = False) -> Dict:
-        # https://docs.hetzner.com/robot/storage-box/available-disk-space
-        # wip
-        raise NotImplementedError()
-        convert_df_output_to_dict()
+    def _inject_base_path_to_abs_path(self, path: str | Path):
+        path: Path = cast_path(path)
+        if path and len(path) != 0 and path.parts[0] == "/":
+            # remove trailing slash to convert path into a "relative" path
+            path = Path(PurePath(*path.parts[1:]))
+        return Path(PurePath(self.remote_base_path, path))

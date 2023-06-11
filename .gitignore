@@ -161,3 +161,4 @@ cython_debug/
 config_ed_test.py
 local_test.py
 version.py
+fstab

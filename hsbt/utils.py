@@ -6,6 +6,8 @@ from typing import Union, List, BinaryIO, Dict
 import subprocess
 import logging
 from dataclasses import dataclass
+from pydantic import BaseModel
+import datetime
 
 log = logging.getLogger(__name__)
 
@@ -38,6 +40,91 @@ def download_file(
         close_file_obj.close()
         return final_target_path
     return target
+
+
+class FileInfo(BaseModel):
+    type_: str
+    permissions: str
+    hardlink_no: str
+    owner: str
+    group: str
+    size: str
+    date: str
+    name: str
+
+
+class FileInfoCollection(BaseModel):
+    collection: Dict[str, FileInfo]
+
+    def get_file_info(self, name: str, default=None) -> FileInfo:
+        return self.collection.get(name, default)
+
+
+def cast_path(path: str | Path | List[str]) -> Path:
+    if path is None:
+        return None
+    elif isinstance(path, Path):
+        return path
+    elif isinstance(path, str):
+        return Path(path)
+    elif isinstance(path, list):
+        return Path(PurePath(*path))
+    else:
+        raise ValueError(f"Expected `pathlib.Path`, `str` or `None` got {type(path)}")
+
+
+def parse_ls_l_output(ls_output: str) -> FileInfoCollection:
+    def extract_file_name(ls_line: str) -> str:
+        if "'" in ls_line:
+            return ls_line.split("'")[1]
+        else:
+            return ls_line.split(" ")[-1]
+
+    """expecting `ls -l` from hetzner storage box format"""
+    data = []
+    files = FileInfoCollection(collection={})
+    lines = ls_output.split("\n")
+    for line in lines:
+        if not line.startswith("total ") and len(line) > 10:
+            file_name = extract_file_name(line)
+            while "  " in line:
+                line = line.replace("  ", " ")
+            data: List[str] = line.split(" ", 9)
+            # remove empty values (happens when ls creates indentations)
+            data = [i for i in data if i != ""]
+            if len(data) == 9:
+                # seperate persmmision from file type
+                data = [data[0][0], data[0][1:]] + data[1:]
+                # pull date string
+                data = data[:6] + [" ".join(data[6:9])] + [data[-1]]
+                file = FileInfo(
+                    type_=data[0],
+                    permissions=data[1],
+                    hardlink_no=data[2],
+                    owner=data[3],
+                    group=data[4],
+                    size=data[5],
+                    date=data[6],
+                    name=file_name,
+                )
+                files.collection[file.name] = file
+            else:
+                raise ValueError(
+                    f"Could not parse `ls -l` output. Expected 9 columns per line got {len(data)}. input data: \n {lines}"
+                )
+    return files
+
+
+def convert_df_output_to_dict(df_output):
+    lines = df_output.strip().split("\n")
+    headers = lines[0].split()
+    devices = []
+
+    for line in lines[1:]:
+        values = line.split()
+        device = dict(zip(headers, values))
+        devices.append(device)
+    return devices
 
 
 def unzip_file(zip_file: Union[str, Path, BinaryIO], target_dir: Path):
@@ -75,7 +162,7 @@ def run_command(
     log.debug(f"COMMAND return code: `{proc.returncode}`")
     result = CommandResult(" ".join(command), proc.stdout, proc.stderr, proc.returncode)
     if result.return_code != 0:
-        e_msg = f"""Command '{" ".join(command)}'. ErrorCode: {proc.returncode} {'Error:' + os.linesep + proc.stderr if proc.stderr else ''}"""
+        e_msg = f"""Command '{" ".join(command)}'. ErrorCode: {proc.returncode} {'stderr:' + os.linesep + proc.stderr if proc.stderr else ''} {os.linesep + 'stdout:' + os.linesep + proc.stdout if proc.stdout else ''}"""
         result.error_for_raise = ChildProcessError(
             e_msg,
             proc.returncode,
@@ -83,18 +170,6 @@ def run_command(
         if raise_error:
             raise result.error_for_raise
     return result
-
-
-def convert_df_output_to_dict(df_output):
-    lines = df_output.strip().split("\n")
-    headers = lines[0].split()
-    devices = []
-
-    for line in lines[1:]:
-        values = line.split()
-        device = dict(zip(headers, values))
-        devices.append(device)
-    return devices
 
 
 class ConfigEntryExistsError(Exception):

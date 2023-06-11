@@ -1,7 +1,7 @@
 import os
 from typing import Union
 from pathlib import Path, PurePath
-from hsbt.utils import run_command
+from hsbt.utils import run_command, cast_path
 import logging
 
 
@@ -20,7 +20,8 @@ class KeyManager:
             )
         target_dir.mkdir(parents=True, exist_ok=True)
         self.target_dir = target_dir
-        self.identifier = identifier if identifier else "hsbt_key"
+        self.identifier = identifier if identifier else "key"
+        self.identifier = f"hsbt_{self.identifier}"
         self.private_key_path: Path = None
         self.public_key_path: Path = None
         self.public_key_rfc_path: Path = None
@@ -94,17 +95,27 @@ class KeyManager:
             self.known_host_path: Path = Path(PurePath(self.target_dir, "known_hosts"))
         return self.known_host_path
 
-    def create_know_host_entry_if_not_exists(self, host: str):
-        know_host_file: Path = self._get_known_host_path()
-        if not self.known_host_entry_exists(host):
+    def create_known_host_entry_if_not_exists(
+        self, host: str, target_file: str | Path = None
+    ):
+        if target_file is None:
+            know_host_file: Path = self._get_known_host_path()
+        else:
+            know_host_file: Path = cast_path(target_file)
+        if not self.known_host_entry_exists(host, know_host_file):
             run_command(
                 f"ssh-keyscan -t dsa,rsa,ecdsa,ed25519 {host} >> {know_host_file}"
             )
 
-    def known_host_entry_exists(self, host: str) -> bool:
+    def known_host_entry_exists(
+        self, host: str, target_file: str | Path = None
+    ) -> bool:
         # https://unix.stackexchange.com/a/31556
         # todo: this function may be a little bit shaky. improve.
-        know_host_file: Path = self._get_known_host_path()
+        if target_file is None:
+            know_host_file: Path = self._get_known_host_path()
+        else:
+            know_host_file: Path = cast_path(target_file)
         if not self.known_host_path.exists():
             return False
         try:
