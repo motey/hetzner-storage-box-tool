@@ -14,6 +14,7 @@ from hsbt.utils import (
 )
 from hsbt.key_manager import KeyManager
 from hsbt.connection_manager import ConnectionManager
+
 import uuid
 
 log = logging.getLogger(__name__)
@@ -30,10 +31,15 @@ class HetznerStorageBox:
         user: str,
         password: str = None,
         key_manager: KeyManager = None,
-        remote_dir: str | Path = "/",
+        remote_dir: str | Path = "/home",
     ):
         if remote_dir is None:
-            remote_dir = "/"
+            remote_dir = "/home"
+        if remote_dir == "/":
+            log.warning(
+                "Hint: The root directory ('/') is defined as entry point on the remote storage (param: `remote_dir` for `hsbt.HetznerStorageBox`). \
+                On Hetzner storageboxes there is no access to the root dir."
+            )
         self.remote_base_path: Path = cast_path(remote_dir)
         self.host: str = host
         self.user: str = user
@@ -172,7 +178,7 @@ class HetznerStorageBox:
         elif command_result.return_code == 0:
             return True
         else:
-            log.error("Could determine ")
+            log.error("Could determine if key is deployd")
 
     def _get_ssh_options(
         self,
@@ -272,6 +278,19 @@ class HetznerStorageBox:
         # wip
         raise NotImplementedError()
 
+    def get_mount_commands_for_sshfs(
+        self,
+        local_mountpoint: str | Path = None,
+    ) -> str:
+        if local_mountpoint is None:
+            local_mountpoint = Path(f"/mnt/{self.key_manager.identifier}")
+        else:
+            local_mountpoint = cast_path(local_mountpoint)
+        options = self._get_ssh_options(pw=None, verbose=False, only_ssh_o_options=True)
+        # hackfix - PubkeyAuthentication is not compatible iwth fuse.sshfs
+        options.pop("PubkeyAuthentication=")
+        return f"""sudo sshfs -o {",".join(k + v for k, v in options.items())},allow_other,default_permissions {self.user}@{self.host}:{self.remote_base_path} {local_mountpoint}"""
+
     def _mount_via_fstab(
         self,
         identifier: str,
@@ -280,6 +299,7 @@ class HetznerStorageBox:
         fstab_file: Union[str, Path] = "/etc/fstab",
         remove: bool = True,
     ):
+        # https://manpages.debian.org/testing/fuse/mount.fuse.8.en.html
         if local_mountpoint is None:
             local_mountpoint = Path(f"/mnt/{self.key_manager.identifier}")
         else:
@@ -315,7 +335,7 @@ class HetznerStorageBox:
         # hackfix - PubkeyAuthentication is not compatible iwth fuse.sshfs
         options.pop("PubkeyAuthentication=")
         # /hackfix
-        fstab_entry = f"{self.user}@{self.host}:{self.remote_base_path} {local_mountpoint} fuse.sshfs {','.join(k+v for k,v in  options.items())},_netdev,delay_connect,users,user_id={user_id},group_id={group_id},reconnect 0 0"
+        fstab_entry = f"{self.user}@{self.host}:{self.remote_base_path} {local_mountpoint} fuse.sshfs {','.join(k+v for k,v in  options.items())},_netdev,delay_connect,users,uid={user_id},gid={group_id},reconnect 0 0"
         self._mount_via_fstab(
             local_mountpoint=local_mountpoint,
             identifier=identifier,
