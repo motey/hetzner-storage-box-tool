@@ -24,7 +24,6 @@ class Rclone:
         self.storage_box_manager = storage_box_manager
         self.config_file_path: Path = cast_path(config_file_path)
 
-    # TODO you are here
     def generate_config_file(self):
         options = dict(
             type="sftp",

@@ -2,10 +2,10 @@ import os
 import zipfile
 import requests
 from pathlib import Path, PurePath
-from typing import Union, List, BinaryIO, Dict
+from typing import Union, List, BinaryIO, Dict, Generator
 import subprocess
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pydantic import BaseModel
 import datetime
 
@@ -53,11 +53,9 @@ class FileInfo(BaseModel):
     name: str
 
 
-class FileInfoCollection(BaseModel):
-    collection: Dict[str, FileInfo]
-
+class FileInfoCollection(dict[str, FileInfo]):
     def get_file_info(self, name: str, default=None) -> FileInfo:
-        return self.collection.get(name, default)
+        return self.get(name, default)
 
 
 def cast_path(path: str | Path | List[str]) -> Path:
@@ -70,7 +68,9 @@ def cast_path(path: str | Path | List[str]) -> Path:
     elif isinstance(path, list):
         return Path(PurePath(*path))
     else:
-        raise ValueError(f"Expected `pathlib.Path`, `str` or `None` got {type(path)}")
+        raise ValueError(
+            f"Expected `pathlib.Path`, `str`, `List[str | pathlib.Path]` or `None` got {type(path)}"
+        )
 
 
 def parse_ls_l_output(ls_output: str) -> FileInfoCollection:
@@ -82,7 +82,7 @@ def parse_ls_l_output(ls_output: str) -> FileInfoCollection:
 
     """expecting `ls -l` from hetzner storage box format"""
     data = []
-    files = FileInfoCollection(collection={})
+    files = FileInfoCollection()
     lines = ls_output.split("\n")
     for line in lines:
         if not line.startswith("total ") and len(line) > 10:
@@ -107,7 +107,7 @@ def parse_ls_l_output(ls_output: str) -> FileInfoCollection:
                     date=data[6],
                     name=file_name,
                 )
-                files.collection[file.name] = file
+                files[file.name] = file
             else:
                 raise ValueError(
                     f"Could not parse `ls -l` output. Expected 9 columns per line got {len(data)}. input data: \n {lines}"
@@ -132,6 +132,61 @@ def unzip_file(zip_file: Union[str, Path, BinaryIO], target_dir: Path):
         zip_ref.extractall(target_dir)
 
 
+import sys
+
+
+@dataclass
+class ProcessOutput:
+    command: str
+    stdout_lines: List[str] = field(default_factory=list)
+    stdout_current: str = ""
+    stderr: List[str] = field(default_factory=list)
+    return_code: str = None
+    error_for_raise: ChildProcessError = None
+
+
+def open_process(
+    command: Union[List[str], str],
+    extra_envs: Dict[str, str] = None,
+    raise_error: bool = True,
+) -> Generator[ProcessOutput, None, None]:
+    env = os.environ.copy()
+    if extra_envs:
+        env = env | extra_envs
+
+    if isinstance(command, str):
+        command = [command]
+    output = ProcessOutput(command=" ".join(command))
+
+    process = subprocess.Popen(
+        args=command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        shell=True,
+        env=env,
+    )
+    while True:
+        if output.stdout_current:
+            output.stdout_lines.append(output.stdout_current)
+            output.stdout_current = None
+        process.poll()
+        if process.returncode is not None:
+            break
+
+        output.stdout_current = process.stdout.readline().decode().strip()
+        if output.stdout_current:
+            yield output
+    output.stderr = process.stderr.read().decode().strip()
+    process.wait()
+    output.return_code = process.returncode
+    if output.return_code != 0:
+        e_msg = f"""Command '{output.command}'. ErrorCode: {output.return_code} {'stderr:' + os.linesep + output.stderr if  output.stderr else ''} {os.linesep + 'stdout laste line:' + os.linesep + output.stdout_current if output.stdout_current else ''}"""
+        output.error_for_raise = ChildProcessError(e_msg)
+        if raise_error:
+            raise output.error_for_raise
+    yield output
+
+
 @dataclass
 class CommandResult:
     command: str = None
@@ -146,17 +201,28 @@ def run_command(
     extra_envs: Dict[str, str] = None,
     raise_error: bool = True,
 ) -> CommandResult:
-    if extra_envs is None:
-        extra_envs = {}
+    process_output = None
+    for output in open_process(
+        command=command, extra_envs=extra_envs, raise_error=raise_error
+    ):
+        process_output = output
+    return CommandResult(
+        command=process_output.command,
+        stdout="\n".join(process_output.stdout_lines),
+        stderr=process_output.stderr,
+        return_code=output.return_code,
+        error_for_raise=output.error_for_raise,
+    )
+
+    env = os.environ.copy()
+    if extra_envs:
+        env = env | extra_envs
     if isinstance(command, str):
         command = [command]
     prefixed_command = ["/bin/bash", "-c"] + command
 
-    current_env: Dict[str, str] = os.environ.copy()
     log.debug(f"RUN COMMAND: {' '.join(prefixed_command)}")
-    proc = subprocess.run(
-        prefixed_command, capture_output=True, text=True, env=current_env | extra_envs
-    )
+    proc = subprocess.run(prefixed_command, capture_output=True, text=True, env=env)
     log.debug(f"COMMAND stdout: `{proc.stdout}`")
     log.debug(f"COMMAND stderr: `{proc.stderr}`")
     log.debug(f"COMMAND return code: `{proc.returncode}`")

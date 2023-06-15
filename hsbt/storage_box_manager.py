@@ -96,7 +96,7 @@ class HetznerStorageBox:
         remote_path = cast_path(remote_path)
         return parse_ls_l_output(self.run_remote_command(f"ls -la {remote_path}"))
 
-    def list_remote_files(self, remote_path: str | Path) -> FileInfoCollection:
+    def list_remote_files(self, remote_path: str | Path = ".") -> FileInfoCollection:
         remote_path: Path = self._inject_base_path_to_abs_path(remote_path)
         return self._list_remote_files(remote_path)
 
@@ -397,7 +397,7 @@ class HetznerStorageBox:
 
     def _inject_base_path_to_abs_path(self, path: str | Path):
         path: Path = cast_path(path)
-        if path and len(path) != 0 and path.parts[0] == "/":
+        if path and len(path.parts) != 0 and path.parts[0] == "/":
             # remove trailing slash to convert path into a "relative" path
             path = Path(PurePath(*path.parts[1:]))
         return Path(PurePath(self.remote_base_path, path))
