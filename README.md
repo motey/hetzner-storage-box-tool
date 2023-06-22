@@ -8,3 +8,8 @@ State: WIP (not usable yet)
 sshpass
 ssh-keygen
 ssh-keyscan
+
+
+# ENV Vars
+
+HSBT_CONNECTIONS_CONFIG_FILE path for the configuration json file.

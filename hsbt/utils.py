@@ -243,6 +243,11 @@ class ConfigEntryExistsError(Exception):
 
 
 class ConfigFileEditor:
+    """Helper function to edit line based config files e.g. /etc/fstab
+    Can insert/update/remove lines. Added lines will be enclosed by command in a certain format.
+    This enables ConfigFileEditor to later re-identify lines.
+    """
+
     def __init__(
         self,
         target_file: Union[str, Path],

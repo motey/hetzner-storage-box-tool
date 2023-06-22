@@ -1,9 +1,9 @@
-import os
+import os, sys
 from typing import Union, List, Dict
 from pathlib import Path, PurePath
-from hsbt.utils import is_root
+from hsbt.utils import is_root, cast_path
 import json
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ConnectionManager:
@@ -11,10 +11,12 @@ class ConnectionManager:
         identifier: str
         host: str
         user: str
-        key_dir: Path
+        key_dir: str
 
     class ConnectionList(BaseModel):
-        connections: Dict[str, "ConnectionManager.Connection"]
+        connections: Dict[str, "ConnectionManager.Connection"] = Field(
+            default_factory=dict
+        )
 
         def extend_connections(
             self, other_connection_list: "ConnectionManager.ConnectionList"
@@ -65,12 +67,13 @@ class ConnectionManager:
         from_specific_config_file: Union[str, Path] = None,
     ) -> ConnectionList:
         if from_specific_config_file is not None:
-            sources = from_specific_config_file
+            sources = [from_specific_config_file]
         else:
             sources = [self.target_config_file] + self.alternative_config_file_sources
-        cons = ConnectionManager.ConnectionList({})
+        cons = ConnectionManager.ConnectionList()
         for source_file in sources:
             if source_file.is_file() and os.access(source_file, os.R_OK):
+                ConnectionManager.ConnectionList.update_forward_refs()
                 cons.extend_connections(
                     ConnectionManager.ConnectionList.parse_file(source_file)
                 )
@@ -84,16 +87,19 @@ class ConnectionManager:
         key_dir: Union[str, Path] = None,
         overwrite_existing: bool = False,
         exists_ok: bool = True,
-    ):
+    ) -> Connection:
+        print("DO IT")
         existing_cons = self.list_connections(self.target_config_file)
         con = ConnectionManager.Connection(
-            identifier=identifier, host=host, user=user, key_dir=key_dir
+            identifier=identifier, host=host, user=user, key_dir=str(key_dir)
         )
         existing_cons.set_connection(
             con, ovewrite_existing=overwrite_existing, exist_ok=exists_ok
         )
         with open(self.target_config_file, "w") as file:
             file.write(existing_cons.json())
+        print("CONM", con)
+        return con
 
     def get_connection(
         self,
