@@ -56,8 +56,7 @@ class ConnectionManager:
                 target_config_file = user_config_path
                 alternative_config_file_sources = [root_config_path]
         else:
-            if not isinstance(target_config_file, Path):
-                target_config_file = Path(target_config_file)
+            target_config_file = cast_path(target_config_file)
             alternative_config_file_sources = [root_config_path, user_config_path]
         self.target_config_file: Path = target_config_file
         self.alternative_config_file_sources = alternative_config_file_sources
@@ -96,9 +95,9 @@ class ConnectionManager:
         existing_cons.set_connection(
             con, ovewrite_existing=overwrite_existing, exist_ok=exists_ok
         )
+        self.target_config_file.parent.mkdir(parents=True, exist_ok=True)
         with open(self.target_config_file, "w") as file:
             file.write(existing_cons.json())
-        print("CONM", con)
         return con
 
     def get_connection(

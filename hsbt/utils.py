@@ -62,11 +62,11 @@ def cast_path(path: str | Path | List[str]) -> Path:
     if path is None:
         return None
     elif isinstance(path, Path):
-        return path
+        return path.expanduser()
     elif isinstance(path, str):
-        return Path(path)
+        return Path(path).expanduser()
     elif isinstance(path, list):
-        return Path(PurePath(*path))
+        return Path(PurePath(*path)).expanduser()
     else:
         raise ValueError(
             f"Expected `pathlib.Path`, `str`, `List[str | pathlib.Path]` or `None` got {type(path)}"

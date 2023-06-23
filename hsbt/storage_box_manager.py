@@ -45,8 +45,6 @@ class HetznerStorageBox:
         self.user: str = user
 
         self.password: str = password
-        if self.password is None:
-            os.getenv("HSBT_PASSWORD", None)
         self.key_manager: KeyManager = key_manager
 
     @classmethod
@@ -108,7 +106,7 @@ class HetznerStorageBox:
 
     def add_key_manager(self, key_manager: KeyManager = None):
         if key_manager is None:
-            key_manager = KeyManager(identifier=self.user)
+            key_manager = KeyManager(identifier=f"{self.host}")
         self.key_manager = key_manager
 
     def get_key_manager(self) -> KeyManager:
@@ -136,7 +134,7 @@ class HetznerStorageBox:
         self.key_manager.create_known_host_entry_if_not_exists(self.host)
         if self.key_manager.private_key_path is None:
             self.key_manager.ssh_keygen(exists_ok=True)
-        if self.check_if_public_key_is_deployed():
+        if self.public_key_is_deployed():
             return
         if not self.password:
             raise DeployKeyPasswordMissingError(
@@ -156,11 +154,11 @@ class HetznerStorageBox:
         elif result.error_for_raise:
             raise result.error_for_raise
 
-        self.check_if_public_key_is_deployed(self.key_manager.private_key_path)
+        self.public_key_is_deployed(self.key_manager.private_key_path)
 
         return
 
-    def check_if_public_key_is_deployed(self) -> bool:
+    def public_key_is_deployed(self) -> bool:
         # https://docs.hetzner.com/de/robot/storage-box/backup-space-ssh-keys
         self.get_key_manager()
         command_result: CommandResult = self.run_remote_command(
