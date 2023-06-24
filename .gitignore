@@ -163,3 +163,4 @@ local_test.py
 version.py
 fstab
 config.json
+test/

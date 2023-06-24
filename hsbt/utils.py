@@ -180,7 +180,14 @@ def open_process(
     process.wait()
     output.return_code = process.returncode
     if output.return_code != 0:
-        e_msg = f"""Command '{output.command}'. ErrorCode: {output.return_code} {'stderr:' + os.linesep + output.stderr if  output.stderr else ''} {os.linesep + 'stdout laste line:' + os.linesep + output.stdout_current if output.stdout_current else ''}"""
+        tail_stdout = []
+        for l in reversed(output.stdout_lines):
+            if l.strip():
+                tail_stdout.insert(0, l)
+            if len(tail_stdout) == 5:
+                break
+        tail_stdout = "\n".join(tail_stdout)
+        e_msg = f"""Command '{output.command}'. ErrorCode: {output.return_code} {'stderr:' + os.linesep + output.stderr if output.stderr else ''} {os.linesep + 'tail (5 lines) of stdout:' + os.linesep + tail_stdout if tail_stdout else ''}"""
         output.error_for_raise = ChildProcessError(e_msg)
         if raise_error:
             raise output.error_for_raise

@@ -1,9 +1,13 @@
 import os, sys
-from typing import Union, List, Dict
+from typing import Union, List, Dict, Any
 from pathlib import Path, PurePath
 from hsbt.utils import is_root, cast_path
 import json
 from pydantic import BaseModel, Field
+
+import logging
+
+log = logging.getLogger(__name__)
 
 
 class ConnectionManager:
@@ -43,11 +47,24 @@ class ConnectionManager:
         def get_connection(self, identifier: str) -> "ConnectionManager.Connection":
             return self.connections.get(identifier, None)
 
+        def remove_connection(
+            self, connection: Union[str, "ConnectionManager.Connection"]
+        ) -> "ConnectionManager.Connection":
+            conid = None
+            if isinstance(connection, ConnectionManager.Connection):
+                conid = connection.identifier
+
+            elif isinstance(connection, str):
+                conid = connection
+            self.connections = {
+                key: con for key, con in self.connections.items() if key != conid
+            }
+
     def __init__(self, target_config_file: Union[str, Path] = None):
         user_config_path = Path(
-            PurePath(Path.home(), ".config/hetzner_sb_connections.json")
+            PurePath(Path.home(), ".config/hetzner_sbt_connections.json")
         )
-        root_config_path = Path("/etc/hetzner_sb_connections.json")
+        root_config_path = Path("/etc/hetzner_sbt_connections.json")
         if target_config_file is None:
             if is_root():
                 target_config_file = root_config_path
@@ -71,7 +88,11 @@ class ConnectionManager:
             sources = [self.target_config_file] + self.alternative_config_file_sources
         cons = ConnectionManager.ConnectionList()
         for source_file in sources:
-            if source_file.is_file() and os.access(source_file, os.R_OK):
+            if (
+                source_file.is_file()
+                and os.access(source_file, os.R_OK)
+                and os.stat(source_file).st_size != 0
+            ):
                 ConnectionManager.ConnectionList.update_forward_refs()
                 cons.extend_connections(
                     ConnectionManager.ConnectionList.parse_file(source_file)
@@ -87,7 +108,6 @@ class ConnectionManager:
         overwrite_existing: bool = False,
         exists_ok: bool = True,
     ) -> Connection:
-        print("DO IT")
         existing_cons = self.list_connections(self.target_config_file)
         con = ConnectionManager.Connection(
             identifier=identifier, host=host, user=user, key_dir=str(key_dir)
@@ -103,7 +123,7 @@ class ConnectionManager:
     def get_connection(
         self,
         identifier: str,
-        default: None,
+        default: Any = None,
         from_specific_config_file: Union[str, Path] = None,
     ) -> Connection:
         if from_specific_config_file is not None:
@@ -112,9 +132,42 @@ class ConnectionManager:
             sources = [self.target_config_file] + self.alternative_config_file_sources
         for source_file in sources:
             if source_file.is_file() and os.access(source_file, os.R_OK):
+                ConnectionManager.ConnectionList.update_forward_refs()
                 con = ConnectionManager.ConnectionList.parse_file(
                     source_file
                 ).get_connection(identifier=identifier)
                 if con is not None:
                     return con
         return default
+
+    def delete_connection(
+        self,
+        identifier: str,
+        from_specific_config_file: Union[str, Path] = None,
+        missing_ok: bool = False,
+    ) -> Connection:
+        if from_specific_config_file is not None:
+            sources = [from_specific_config_file]
+        else:
+            sources = [self.target_config_file] + self.alternative_config_file_sources
+        for source_file in sources:
+            if source_file.is_file() and os.access(source_file, os.R_OK):
+                conlist = ConnectionManager.ConnectionList.parse_file(source_file)
+                if conlist.get_connection(identifier=identifier) is not None:
+                    if not os.access(source_file, os.W_OK):
+                        raise PermissionError(
+                            f"Found connection '{identifier}' in '{source_file}'. But file is not writable. Please try again with sudo rights."
+                        )
+                    conlist.remove_connection(identifier)
+                    with open(self.target_config_file, "w") as file:
+                        file.write(conlist.json())
+                    log.debug(
+                        f"Removed connection with identifier '{identifier}' from file '{source_file}'"
+                    )
+                    return True
+        not_found_message = f"Could not find connection with identifier '{identifier}'. Config files checked: {sources}"
+        if not missing_ok:
+            raise ValueError(not_found_message)
+        else:
+            log.debug(not_found_message)
+            return False

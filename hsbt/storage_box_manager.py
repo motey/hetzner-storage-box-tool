@@ -106,7 +106,7 @@ class HetznerStorageBox:
 
     def add_key_manager(self, key_manager: KeyManager = None):
         if key_manager is None:
-            key_manager = KeyManager(identifier=f"{self.host}")
+            key_manager = KeyManager(identifier=self.host)
         self.key_manager = key_manager
 
     def get_key_manager(self) -> KeyManager:
@@ -131,7 +131,9 @@ class HetznerStorageBox:
 
     def deploy_public_key_if_not_done(self, sftp_mode: bool = False):
         self.get_key_manager()
-        self.key_manager.create_known_host_entry_if_not_exists(self.host)
+        self.key_manager.create_known_host_entry_if_not_exists(
+            self.host, ports=[22, 23]
+        )
         if self.key_manager.private_key_path is None:
             self.key_manager.ssh_keygen(exists_ok=True)
         if self.public_key_is_deployed():
@@ -153,8 +155,6 @@ class HetznerStorageBox:
             self.deploy_public_key_if_not_done(sftp_mode=True)
         elif result.error_for_raise:
             raise result.error_for_raise
-
-        self.public_key_is_deployed(self.key_manager.private_key_path)
 
         return
 
@@ -191,7 +191,6 @@ class HetznerStorageBox:
                 "-v": "",
             }
         options = options | {
-            "-o StrictHostKeyChecking=": "yes",
             "-o UserKnownHostsFile=": str(self.key_manager._get_known_host_path()),
             "-o Port=": "23",
         }
@@ -204,6 +203,7 @@ class HetznerStorageBox:
             }
         else:
             options = options | {
+                "-o StrictHostKeyChecking=": "yes",
                 "-o PreferredAuthentications=": "publickey",
                 "-o PasswordAuthentication=": "no",
                 "-o IdentityFile=": str(self.key_manager.private_key_path),
@@ -232,17 +232,41 @@ class HetznerStorageBox:
         verbose: bool = False,
         return_stdout_only: bool = True,
         raise_error: bool = True,
+        dry_run: bool = False,
     ) -> str | CommandResult:
+        """_summary_
+
+        Args:
+            command (str): _description_
+            pw (str, optional): _description_. Defaults to None.
+            executor (Literal[&quot;ssh&quot;, &quot;scp&quot;, &quot;ssh, optional): _description_. Defaults to "ssh".
+            on_keyauth_fail_retry_with_pw_auth (bool, optional): _description_. Defaults to True.
+            extra_params (Dict, optional): _description_. Defaults to None.
+            verbose (bool, optional): _description_. Defaults to False.
+            return_stdout_only (bool, optional): _description_. Defaults to True.
+            raise_error (bool, optional): _description_. Defaults to True.
+            dry_run (bool, optional): Only generate and return the command. Do not execute it. Defaults to False.
+
+        Raises:
+            command_result.error_for_raise: _description_
+
+        Returns:
+            str | CommandResult: _description_
+        """
         options = self._get_ssh_options(
             pw=pw, verbose=verbose, extra_params=extra_params
         )
         if executor == "ssh":
-            # ssh commands are added after the base command. scp params are added directly to the remote {self.user}@{self.host} part.
+            # ssh commands are added after the base command. scp param/path is added directly to the remote {self.user}@{self.host} part.
             # therefore we need to add a space to ssh commands
             command = f" {command}"
-
-        remote_command = f"{'sshpass -e' if pw else ''} {executor} {' '.join([k+v for k,v in options.items()])} {self.user}@{self.host}{command}"
-
+        sshpass = f"{'sshpass -e ' if pw else ''}"
+        if dry_run and pw:
+            # dry run can be used to generate command. We contain the password to make the command to be able to be executed as it is
+            sshpass = f" sshpass -p {pw} "
+        remote_command = f"{sshpass}{executor} {' '.join([k+v for k,v in options.items()])} {self.user}@{self.host}{command}"
+        if dry_run:
+            return CommandResult(command=remote_command)
         command_result = run_command(
             remote_command, extra_envs={"SSHPASS": pw} if pw else {}, raise_error=False
         )

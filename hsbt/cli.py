@@ -12,19 +12,49 @@ if __name__ == "__main__":
         os.path.realpath(os.path.join(os.getcwd(), os.path.expanduser(__file__)))
     )
     MODULE_ROOT_DIR = os.path.join(SCRIPT_DIR, "..")
-    print(MODULE_ROOT_DIR)
     sys.path.insert(0, os.path.normpath(MODULE_ROOT_DIR))
 
 from hsbt.connection_manager import ConnectionManager
-from hsbt.storage_box_manager import HetznerStorageBox
+from hsbt.storage_box_manager import HetznerStorageBox, CommandResult
 from hsbt.key_manager import KeyManager
 from hsbt.utils import is_root, cast_path
 
 
 class ENV_VAR_NAMES(str, Enum):
+    CENTRAL_CONFIG_DIR = "HSBT_CENTRAL_CONFIG_DIR"
     CONNECTION_CONFIG_FILE = "HSBT_CONNECTIONS_CONFIG_FILE"
     SSH_KEY_DIRECTORY = "HSBT_SSH_KEY_FILE_DIR"
     PASSWORD = "HSBT_PASSWORD"
+
+
+def get_config_file_path(caller_param_config_file_path: None | str | Path) -> Path:
+    config_file_path: Path = cast_path(caller_param_config_file_path)
+    if caller_param_config_file_path is None:
+        config_file_path = cast_path(
+            os.getenv(ENV_VAR_NAMES.CONNECTION_CONFIG_FILE, default=None)
+        )
+    central_dir = os.getenv(ENV_VAR_NAMES.CENTRAL_CONFIG_DIR, default=None)
+    if config_file_path is None and central_dir:
+        return cast_path([central_dir, "config", "hetzner_sbt_connections.json"])
+    return config_file_path
+
+
+def get_ssh_dir(caller_param_config_file_path: None | str | Path) -> Path:
+    config_file_path: Path = cast_path(caller_param_config_file_path)
+    if caller_param_config_file_path is None:
+        config_file_path = cast_path(
+            os.getenv(ENV_VAR_NAMES.SSH_KEY_DIRECTORY, default=None)
+        )
+    central_dir = os.getenv(ENV_VAR_NAMES.CENTRAL_CONFIG_DIR, default=None)
+    if config_file_path is None and central_dir:
+        return cast_path([central_dir, "ssh"])
+    return config_file_path
+
+
+def ssh_dir_callback(
+    ctx: click.Context, param: click.Option, connection_identifier: Any
+):
+    return get_ssh_dir(connection_identifier)
 
 
 def conditonal_connection_prompts(
@@ -41,6 +71,7 @@ def conditonal_connection_prompts(
         click.echo(
             "No connection identifier ('-i'/'--identifier') provided. Will prompt for connection details."
         )
+    return connection_identifier
 
 
 def connection_options(
@@ -87,15 +118,22 @@ def connection_options(
         ###
         ### config-file-path
         ###
+
+        default = (
+            "/etc/hetzner_sbt_connections.json"
+            if is_root()
+            else "~/.config/hetzner_sbt_connections.json"
+        )
+        default_from_env = get_config_file_path(None)
+        if default_from_env:
+            default = default_from_env
         function = click.option(
             "-c",
             "--config-file-path",
             type=click.STRING,
             required=False,
-            help="hsbt saves connection infos into a json file. By default root will store connections into '/etc/hetzner_sb_connections.json' and any other user in '~/.config/hetzner_sb_connections.json'",
-            default="/etc/hetzner_sb_connections.json"
-            if is_root()
-            else "~/.config/hetzner_sb_connections.json",
+            help="hsbt saves connection infos into a json file. By default root will store connections into '/etc/hetzner_sbt_connections.json' and any other user in '~/.config/hetzner_sbt_connections.json'",
+            default=default,
         )(function)
         ###
         ### ssh-key-dir
@@ -108,10 +146,11 @@ def connection_options(
             "--ssh-key-dir",
             type=click.STRING,
             prompt="Directory to store ssh private and public key"
-            if with_prompting
+            if with_prompting and get_ssh_dir(None) is None
             else None,
             help=help,
-            default="~/.ssh/",
+            default="~/.ssh/" if get_ssh_dir(None) is None else get_ssh_dir(None),
+            callback=ssh_dir_callback,
         )(function)
         ###
         ### user
@@ -155,15 +194,10 @@ def get_and_validate_storage_box_connection(
     password: str = None,
     config_file_path: str = None,
     force_password_use: bool = False,
+    validate_connection: bool = False,
 ) -> HetznerStorageBox:
-    if config_file_path is None:
-        config_file_path = cast_path(
-            os.getenv(ENV_VAR_NAMES.CONNECTION_CONFIG_FILE, default=None)
-        )
-    if ssh_key_dir is None:
-        ssh_key_dir = cast_path(
-            os.getenv(ENV_VAR_NAMES.SSH_KEY_DIRECTORY, default=None)
-        )
+    config_file_path: Path = get_config_file_path(config_file_path)
+    ssh_key_dir: Path = get_ssh_dir(ssh_key_dir)
     if password is None:
         password = cast_path(os.getenv(ENV_VAR_NAMES.PASSWORD, default=None))
     hsbt: HetznerStorageBox = None
@@ -172,16 +206,20 @@ def get_and_validate_storage_box_connection(
         con = conman.get_connection(identifier=identifier)
         if con is None:
             raise ValueError(
-                f"Could not find connection with identifier '{identifier}'. Use 'hsbt listConnection' to see available connections"
+                f"Could not find a connection with the identifier '{identifier}'. Use 'hsbt listConnection' to see available connections and/or create a new connection with 'hsbt setConnection'"
             )
         hsbt = HetznerStorageBox.from_connection(con)
     else:
         hsbt = HetznerStorageBox(
             host=host,
             user=user,
-            key_manager=KeyManager(target_dir=ssh_key_dir, identifier=f"{host}"),
+            key_manager=KeyManager(
+                target_dir=ssh_key_dir, identifier=identifier if identifier else host
+            ),
         )
-    if force_password_use or not hsbt.public_key_is_deployed():
+    if force_password_use or (
+        validate_connection and not hsbt.public_key_is_deployed()
+    ):
         if password is None:
             password = click.prompt(
                 f"Password for Hetzner Storage Box user {user}",
@@ -223,9 +261,16 @@ def cli(debug):
     "-o",
     "--overwrite-existing",
     type=click.BOOL,
-    # prompt="If connection identifiert exists, update/overwrite it?",
     is_flag=True,
     help="If a connection configuration with the same identifier already exists, this command will fail. If you are sure you want to overwrite it pass '-o' to the command to update the existing connection configuration",
+    default=False,
+)
+@click.option(
+    "-k",
+    "--skip-key-deployment",
+    type=click.BOOL,
+    is_flag=True,
+    help="If set will not do any external communication. This can be helpful for pre-creating the connection config file. If the key is not deployed, hsbt will ask for the password on first use of the connection to exchange the key then.",
     default=False,
 )
 def set_connection(
@@ -235,13 +280,10 @@ def set_connection(
     ssh_key_dir: str | Path,
     overwrite_existing: bool,
     config_file_path: str,
+    skip_key_deployment: bool,
 ):
-    # save connection params as json in /etc/hetzner_connections.json when root or ~/.config/hetzner_connections.json if non root
-    # exchange key with hetzner storage box.
-    if config_file_path is None:
-        config_file_path = cast_path(
-            os.getenv(ENV_VAR_NAMES.CONNECTION_CONFIG_FILE, default=None)
-        )
+    config_file_path: Path = get_config_file_path(config_file_path)
+    ssh_key_dir: Path = get_ssh_dir(ssh_key_dir)
     connection_manager = ConnectionManager(target_config_file=config_file_path)
     con = connection_manager.set_connection(
         identifier=identifier,
@@ -251,10 +293,68 @@ def set_connection(
         overwrite_existing=overwrite_existing,
         exists_ok=False,
     )
+    if not skip_key_deployment:
+        get_and_validate_storage_box_connection(
+            con.identifier, validate_connection=True
+        )
     click.echo(f"Saved connection at '{connection_manager.target_config_file}' as:")
     click.echo(f"\t{con}")
 
     # ConnectionManager(target_config_file=)
+
+
+@cli.command(
+    name="deleteConnection",
+    help="Define a new named connection to reference in all other commands",
+)
+@click.option(
+    "-i",
+    "--identifier",
+    type=click.STRING,
+    prompt="Identifying name for the connection",
+    help="An identifier to point to the connection in all other commands.",
+)
+@click.option(
+    "-m",
+    "--missing-ok",
+    type=click.BOOL,
+    is_flag=True,
+    help="If a connection configuration with the same identifier already exists, this command will fail. If you are sure you want to overwrite it pass '-o' to the command to update the existing connection configuration",
+    default=False,
+)
+@click.option(
+    "-c",
+    "--config-file-path",
+    type=click.STRING,
+    required=False,
+    help="hsbt saves connection infos into a json file. By default root will store connections into '/etc/hetzner_sbt_connections.json' and any other user in '~/.config/hetzner_sbt_connections.json'",
+    default="/etc/hetzner_sbt_connections.json"
+    if is_root()
+    else "~/.config/hetzner_sbt_connections.json",
+)
+@click.option(
+    "-k",
+    "--delete-keys",
+    type=click.BOOL,
+    is_flag=True,
+    help="Delete ssh keys that are mapped to this connection as well.",
+    default=False,
+)
+def delete_connection(
+    identifier: str,
+    config_file_path: str | Path,
+    delete_keys: bool,
+    missing_ok: bool,
+):
+    config_file_path: Path = get_config_file_path(config_file_path)
+
+    connection_manager = ConnectionManager(target_config_file=config_file_path)
+    con = connection_manager.get_connection(identifier=identifier)
+    if con is not None and delete_keys:
+        hsbt = HetznerStorageBox.from_connection(con)
+        hsbt.key_manager.private_key_path.unlink(missing_ok=True)
+        hsbt.key_manager.public_key_path.unlink(missing_ok=True)
+    connection_manager.delete_connection(identifier=identifier, missing_ok=missing_ok)
 
 
 @cli.command(name="listConnection")
@@ -269,14 +369,12 @@ def set_connection(
     "-c",
     "--config-file-path",
     type=click.STRING,
-    help="Alternative config file instead of '/etc/hetzner_sb_connections.json' and '~/.config/hetzner_sb_connections.json'",
+    help="Alternative config file instead of '/etc/hetzner_sbt_connections.json' and '~/.config/hetzner_sbt_connections.json'",
     default=None,
 )
 def list_connections(format_output, config_file_path):
-    if config_file_path is None:
-        config_file_path = cast_path(
-            os.getenv(ENV_VAR_NAMES.CONNECTION_CONFIG_FILE, default=None),
-        )
+    config_file_path: Path = get_config_file_path(config_file_path)
+
     connection_manager = ConnectionManager(target_config_file=config_file_path)
 
     if format_output == "yaml":
@@ -287,7 +385,7 @@ def list_connections(format_output, config_file_path):
 
 
 @cli.command(
-    name="remoteSSH",
+    name="remoteCmd",
     help="Run a command at the Hetzner storage box. See https://docs.hetzner.com/robot/storage-box/access/access-ssh-rsync-borg#available-commands for available commands",
 )
 @click.option(
@@ -299,6 +397,14 @@ def list_connections(format_output, config_file_path):
     callback=conditonal_connection_prompts,
 )
 @connection_options(with_prompting=True, optional=True)
+@click.option(
+    "-n",
+    "--no-exec",
+    type=click.BOOL,
+    is_flag=True,
+    default=False,
+    help="Only return the local ssh command with all parameters to run the remote command",
+)
 @click.argument(
     "command",
     type=click.STRING,
@@ -312,7 +418,10 @@ def run_remote_command(
     config_file_path: str,
     force_password_use: str,
     command: str,
-):
+    no_exec: bool,
+) -> str:
+    config_file_path: Path = get_config_file_path(config_file_path)
+    ssh_key_dir: Path = get_ssh_dir(ssh_key_dir)
     hsbt: HetznerStorageBox = get_and_validate_storage_box_connection(
         identifier=identifier,
         host=host,
@@ -322,14 +431,40 @@ def run_remote_command(
         config_file_path=config_file_path,
         force_password_use=force_password_use,
     )
-    hsbt.run_remote_command(command)
+    result: CommandResult = hsbt.run_remote_command(
+        command, dry_run=no_exec, return_stdout_only=False
+    )
+    click.echo(result.command if no_exec else result.stdout)
 
 
-def delete_connection(connection_identifier: str):
-    pass
-
-
-def mount(connection_identifier: str):
+@cli.command(
+    name="mount",
+    help="Run a command at the Hetzner storage box. See https://docs.hetzner.com/robot/storage-box/access/access-ssh-rsync-borg#available-commands for available commands",
+)
+@click.option(
+    "-i",
+    "--identifier",
+    type=click.STRING,
+    help="An identifier of an existing connection defined with 'hsbt setConnection'. Alternatively set '--user' and '--host' to define a connection on the fly (which will not be saved).",
+    default="",
+    callback=conditonal_connection_prompts,
+)
+@connection_options(with_prompting=True, optional=True)
+@click.option(
+    "-m",
+    "--mount-point",
+    type=click.STRING,
+)
+def mount(
+    identifier: str,
+    host: str,
+    user: str,
+    ssh_key_dir: str | Path,
+    password: str,
+    config_file_path: str,
+    force_password_use: str,
+    mount_point: str,
+):
     pass
 
 
