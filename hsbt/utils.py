@@ -7,7 +7,9 @@ import subprocess
 import logging
 from dataclasses import dataclass, field
 from pydantic import BaseModel
-import datetime
+import shutil
+from hsbt.env_var_names import EnvVarNames, EXECUTABLE_PATH_ENV_VAR_MAPPING
+
 
 log = logging.getLogger(__name__)
 
@@ -221,29 +223,6 @@ def run_command(
         error_for_raise=output.error_for_raise,
     )
 
-    env = os.environ.copy()
-    if extra_envs:
-        env = env | extra_envs
-    if isinstance(command, str):
-        command = [command]
-    prefixed_command = ["/bin/bash", "-c"] + command
-
-    log.debug(f"RUN COMMAND: {' '.join(prefixed_command)}")
-    proc = subprocess.run(prefixed_command, capture_output=True, text=True, env=env)
-    log.debug(f"COMMAND stdout: `{proc.stdout}`")
-    log.debug(f"COMMAND stderr: `{proc.stderr}`")
-    log.debug(f"COMMAND return code: `{proc.returncode}`")
-    result = CommandResult(" ".join(command), proc.stdout, proc.stderr, proc.returncode)
-    if result.return_code != 0:
-        e_msg = f"""Command '{" ".join(command)}'. ErrorCode: {proc.returncode} {'stderr:' + os.linesep + proc.stderr if proc.stderr else ''} {os.linesep + 'stdout:' + os.linesep + proc.stdout if proc.stdout else ''}"""
-        result.error_for_raise = ChildProcessError(
-            e_msg,
-            proc.returncode,
-        )
-        if raise_error:
-            raise result.error_for_raise
-    return result
-
 
 class ConfigEntryExistsError(Exception):
     pass
@@ -436,3 +415,22 @@ class ConfigFileEditor:
 
     def _get_end_delimiter(self, identifier: str):
         return f"{self.line_comment_line_delimiter} </{self.source_hint} '{self.base_identifier}/{identifier}'>"
+
+
+class RequirementMissing(Exception):
+    pass
+
+
+def get_external_executable_path(executable: str, raise_error: bool = True) -> Path:
+    if executable in EXECUTABLE_PATH_ENV_VAR_MAPPING:
+        path = os.getenv(EXECUTABLE_PATH_ENV_VAR_MAPPING[executable], None)
+    else:
+        path = shutil.which(executable)
+    if path is None:
+        if raise_error:
+            raise RequirementMissing(
+                f"'{executable}' is missing. Please install before proceeding."
+            )
+        return None
+    log.debug(f"Found '{executable}' at '{path}'")
+    return cast_path(path)

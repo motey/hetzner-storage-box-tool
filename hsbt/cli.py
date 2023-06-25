@@ -1,4 +1,4 @@
-from typing import List, Any
+from typing import List, Any, Literal
 import os, sys
 from pathlib import Path, PurePath
 import click
@@ -6,6 +6,9 @@ import click
 import logging
 import yaml
 from enum import Enum
+
+
+log = logging.getLogger(__name__)
 
 if __name__ == "__main__":
     SCRIPT_DIR = os.path.dirname(
@@ -18,22 +21,16 @@ from hsbt.connection_manager import ConnectionManager
 from hsbt.storage_box_manager import HetznerStorageBox, CommandResult
 from hsbt.key_manager import KeyManager
 from hsbt.utils import is_root, cast_path
-
-
-class ENV_VAR_NAMES(str, Enum):
-    CENTRAL_CONFIG_DIR = "HSBT_CENTRAL_CONFIG_DIR"
-    CONNECTION_CONFIG_FILE = "HSBT_CONNECTIONS_CONFIG_FILE"
-    SSH_KEY_DIRECTORY = "HSBT_SSH_KEY_FILE_DIR"
-    PASSWORD = "HSBT_PASSWORD"
+from hsbt.env_var_names import EnvVarNames
 
 
 def get_config_file_path(caller_param_config_file_path: None | str | Path) -> Path:
     config_file_path: Path = cast_path(caller_param_config_file_path)
     if caller_param_config_file_path is None:
         config_file_path = cast_path(
-            os.getenv(ENV_VAR_NAMES.CONNECTION_CONFIG_FILE, default=None)
+            os.getenv(EnvVarNames.CONNECTION_CONFIG_FILE, default=None)
         )
-    central_dir = os.getenv(ENV_VAR_NAMES.CENTRAL_CONFIG_DIR, default=None)
+    central_dir = os.getenv(EnvVarNames.CENTRAL_CONFIG_DIR, default=None)
     if config_file_path is None and central_dir:
         return cast_path([central_dir, "config", "hetzner_sbt_connections.json"])
     return config_file_path
@@ -43,9 +40,9 @@ def get_ssh_dir(caller_param_config_file_path: None | str | Path) -> Path:
     config_file_path: Path = cast_path(caller_param_config_file_path)
     if caller_param_config_file_path is None:
         config_file_path = cast_path(
-            os.getenv(ENV_VAR_NAMES.SSH_KEY_DIRECTORY, default=None)
+            os.getenv(EnvVarNames.SSH_KEY_DIRECTORY, default=None)
         )
-    central_dir = os.getenv(ENV_VAR_NAMES.CENTRAL_CONFIG_DIR, default=None)
+    central_dir = os.getenv(EnvVarNames.CENTRAL_CONFIG_DIR, default=None)
     if config_file_path is None and central_dir:
         return cast_path([central_dir, "ssh"])
     return config_file_path
@@ -199,7 +196,7 @@ def get_and_validate_storage_box_connection(
     config_file_path: Path = get_config_file_path(config_file_path)
     ssh_key_dir: Path = get_ssh_dir(ssh_key_dir)
     if password is None:
-        password = cast_path(os.getenv(ENV_VAR_NAMES.PASSWORD, default=None))
+        password = cast_path(os.getenv(EnvVarNames.PASSWORD, default=None))
     hsbt: HetznerStorageBox = None
     if identifier not in [None, ""]:
         conman = ConnectionManager(target_config_file=config_file_path)
@@ -455,6 +452,13 @@ def run_remote_command(
     "--mount-point",
     type=click.STRING,
 )
+@click.option(
+    "-t",
+    "--mount-tool",
+    type=click.Choice(["sshfs", "rclone"], case_sensitive=False),
+    multiple=False,
+    default=None,
+)
 def mount(
     identifier: str,
     host: str,
@@ -464,11 +468,46 @@ def mount(
     config_file_path: str,
     force_password_use: str,
     mount_point: str,
+    mount_tool: Literal["sshfs", "rclone"],
 ):
-    pass
+    if mount_tool == "sshfs":
+        log.warning(
+            "sshfs is unmaintained at the moment. see https://github.com/libfuse/sshfs for more details. \
+            It is recommended to use rclone (https://rclone.org/commands/rclone_mount/) as mounting tool. \
+            Just use the '-t' or '--mount-tool' parameter."
+        )
 
 
-def permament_mount(connection_identifier: str):
+@cli.command(
+    name="mountPerm",
+    help="Run a command at the Hetzner storage box. See https://docs.hetzner.com/robot/storage-box/access/access-ssh-rsync-borg#available-commands for available commands",
+)
+@click.option(
+    "-i",
+    "--identifier",
+    type=click.STRING,
+    help="An identifier of an existing connection defined with 'hsbt setConnection'. Alternatively set '--user' and '--host' to define a connection on the fly (which will not be saved).",
+    default="",
+    callback=conditonal_connection_prompts,
+)
+@connection_options(with_prompting=True, optional=True)
+@click.option(
+    "-m",
+    "--mount-point",
+    type=click.STRING,
+)
+def mount_permanent(
+    identifier: str,
+    host: str,
+    user: str,
+    ssh_key_dir: str | Path,
+    password: str,
+    config_file_path: str,
+    force_password_use: str,
+    mount_point: str,
+    mount_tool: Literal["sshfs", "rclone"],
+    mount_style: Literal["static", "systemd-automount", "autofs"],
+):
     pass
 
 

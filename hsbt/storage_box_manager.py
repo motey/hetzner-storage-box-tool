@@ -38,7 +38,7 @@ class HetznerStorageBox:
         if remote_dir == "/":
             log.warning(
                 "Hint: The root directory ('/') is defined as entry point on the remote storage (param: `remote_dir` for `hsbt.HetznerStorageBox`). \
-                On Hetzner storageboxes there is no access to the root dir."
+                On a Hetzner storageboxes there is no access to the the root dir. Use relatives pathes to move inside your storage box home directory"
             )
         self.remote_base_path: Path = cast_path(remote_dir)
         self.host: str = host
@@ -239,7 +239,7 @@ class HetznerStorageBox:
         Args:
             command (str): _description_
             pw (str, optional): _description_. Defaults to None.
-            executor (Literal[&quot;ssh&quot;, &quot;scp&quot;, &quot;ssh, optional): _description_. Defaults to "ssh".
+            executor (Literal["ssh", "scp", "ssh"], optional): _description_. Defaults to "ssh".
             on_keyauth_fail_retry_with_pw_auth (bool, optional): _description_. Defaults to True.
             extra_params (Dict, optional): _description_. Defaults to None.
             verbose (bool, optional): _description_. Defaults to False.

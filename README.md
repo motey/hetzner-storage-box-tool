@@ -29,6 +29,7 @@ HSBT_SSH_KEY_FILE_DIR - If key is not in ~/.ssh you can provide an alternative d
 
 ```bash
 Directory to store ssh private and public key [~/.ssh/]: ↩️
+Password for Hetzner Storage Box user myBox1: ...↩️
 Saved connection at '/home/tim/.config/hetzner_sbt_connections.json' as:
         identifier='myBox1' host='u111111.your-storage.de' user='u111111' key_dir='~/.ssh/'
 ```
