@@ -43,9 +43,19 @@ class HetznerStorageBox:
         self.remote_base_path: Path = cast_path(remote_dir)
         self.host: str = host
         self.user: str = user
+        self.port: int = 23
 
         self.password: str = password
         self.key_manager: KeyManager = key_manager
+        self.binaries: Dict[str, str] = {
+            "ssh": "ssh",
+            "ssh-copy-id": "ssh-copy-id",
+            "scp": "scp",
+            "sshfs": "sshfs",
+            "sshpass": "sshpass",
+            "umount": "umount",
+            "mount": "mount",
+        }
 
     @classmethod
     def from_connection(cls, con: ConnectionManager.Connection):
@@ -129,15 +139,31 @@ class HetznerStorageBox:
         )
         return target_local_path
 
-    def deploy_public_key_if_not_done(self, sftp_mode: bool = False):
+    def deploy_public_key_if_not_done(self, sftp_mode: bool = False) -> bool:
+        """_summary_
+
+        Args:
+            sftp_mode (bool, optional): _description_. Defaults to False.
+
+        Raises:
+            DeployKeyPasswordMissingError: _description_
+            result.error_for_raise: _description_
+
+        Returns:
+            bool: Return True if key was just deployd and False if key was allready deployd
+        """
         self.get_key_manager()
+        if not self.key_manager.validate_if_keys_exists_and_valid(
+            raise_if_not_valid=False
+        ):
+            self.key_manager.ssh_keygen(overwrite_if_exists=True)
         self.key_manager.create_known_host_entry_if_not_exists(
-            self.host, ports=[22, 23]
+            self.host, ports=self.port
         )
         if self.key_manager.private_key_path is None:
             self.key_manager.ssh_keygen(exists_ok=True)
         if self.public_key_is_deployed():
-            return
+            return False
         if not self.password:
             raise DeployKeyPasswordMissingError(
                 f"To deploy your public SSH Key (`{self.key_manager.public_key_path}`) at `{self.host}` the first time, storage box password must be provided. After that future connections will be authorized by the deployed key and no password is required anymore."
@@ -152,11 +178,11 @@ class HetznerStorageBox:
             raise_error=False,
         )
         if 'ssh-copy-id is only supported with the "-s" argument.' in result.stdout:
-            self.deploy_public_key_if_not_done(sftp_mode=True)
+            return self.deploy_public_key_if_not_done(sftp_mode=True)
         elif result.error_for_raise:
             raise result.error_for_raise
 
-        return
+        return True
 
     def public_key_is_deployed(self) -> bool:
         # https://docs.hetzner.com/de/robot/storage-box/backup-space-ssh-keys
@@ -260,11 +286,13 @@ class HetznerStorageBox:
             # ssh commands are added after the base command. scp param/path is added directly to the remote {self.user}@{self.host} part.
             # therefore we need to add a space to ssh commands
             command = f" {command}"
-        sshpass = f"{'sshpass -e ' if pw else ''}"
+        executor_binary = self.binaries[executor]
+        sshpass_binary = self.binaries["sshpass"]
+        sshpass = f"{sshpass_binary + ' -e '}" if pw else ""
         if dry_run and pw:
             # dry run can be used to generate command. We contain the password to make the command to be able to be executed as it is
-            sshpass = f" sshpass -p {pw} "
-        remote_command = f"{sshpass}{executor} {' '.join([k+v for k,v in options.items()])} {self.user}@{self.host}{command}"
+            sshpass = f" {sshpass_binary} -p {pw} "
+        remote_command = f"{sshpass}{executor_binary} {' '.join([k+v for k,v in options.items()])} {self.user}@{self.host}{command}"
         if dry_run:
             return CommandResult(command=remote_command)
         command_result = run_command(
@@ -311,7 +339,7 @@ class HetznerStorageBox:
         options = self._get_ssh_options(pw=None, verbose=False, only_ssh_o_options=True)
         # hackfix - PubkeyAuthentication is not compatible iwth fuse.sshfs
         options.pop("PubkeyAuthentication=")
-        return f"""sudo sshfs -o {",".join(k + v for k, v in options.items())},allow_other,default_permissions {self.user}@{self.host}:{self.remote_base_path} {local_mountpoint}"""
+        return f"""sudo {self.binaries['sshfs']} -o {",".join(k + v for k, v in options.items())},allow_other,default_permissions {self.user}@{self.host}:{self.remote_base_path} {local_mountpoint}"""
 
     def _mount_via_fstab(
         self,
@@ -328,7 +356,7 @@ class HetznerStorageBox:
             local_mountpoint = cast_path(local_mountpoint)
         fstab = ConfigFileEditor(fstab_file)
         if remove:
-            run_command(f"umount --fstab {fstab.target_file} -a")
+            run_command(f"{self.binaries['umount']} --fstab {fstab.target_file} -a")
             fstab.remove_config_entry(identifier)
         else:
             fstab.set_config_entry(
@@ -336,7 +364,7 @@ class HetznerStorageBox:
                 identifier=identifier,
             )
             local_mountpoint.mkdir(parents=True, exist_ok=True)
-            run_command(f"mount --fstab {fstab.target_file} -a")
+            run_command(f"{self.binaries['mount']} --fstab {fstab.target_file} -a")
 
     def mount_storage_box_via_fstab_via_sshfs(
         self,
@@ -411,7 +439,7 @@ class HetznerStorageBox:
         # https://rclone.org/commands/rclone_mount/
         raise NotImplementedError()
 
-    def temp_mount_storage_box_via_sshfs():
+    def mount_storage_box_via_sshfs():
         raise NotImplementedError()
 
     def temp_mount_storage_box_via_rclone():

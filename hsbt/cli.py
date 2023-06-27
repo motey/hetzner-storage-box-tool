@@ -1,4 +1,4 @@
-from typing import List, Any, Literal
+from typing import List, Any, Literal, Dict
 import os, sys
 from pathlib import Path, PurePath
 import click
@@ -21,7 +21,8 @@ from hsbt.connection_manager import ConnectionManager
 from hsbt.storage_box_manager import HetznerStorageBox, CommandResult
 from hsbt.key_manager import KeyManager
 from hsbt.utils import is_root, cast_path
-from hsbt.env_var_names import EnvVarNames
+from hsbt.env_var_names import EnvVarNames, EXECUTABLE_PATH_ENV_VAR_MAPPING
+from hsbt.rclone_manager import Rclone
 
 
 def get_config_file_path(caller_param_config_file_path: None | str | Path) -> Path:
@@ -45,6 +46,21 @@ def get_ssh_dir(caller_param_config_file_path: None | str | Path) -> Path:
     central_dir = os.getenv(EnvVarNames.CENTRAL_CONFIG_DIR, default=None)
     if config_file_path is None and central_dir:
         return cast_path([central_dir, "ssh"])
+    return config_file_path
+
+
+def get_rclone_config_file_path(
+    caller_param_config_file_path: None | str | Path,
+) -> Path:
+    config_file_path: Path = cast_path(caller_param_config_file_path)
+    print("caller_param_config_file_path", caller_param_config_file_path)
+    if caller_param_config_file_path is None:
+        config_file_path = cast_path(
+            os.getenv(EnvVarNames.RCLONE_CONFIG_FILE, default=None)
+        )
+    central_dir = os.getenv(EnvVarNames.CENTRAL_CONFIG_DIR, default=None)
+    if config_file_path is None and central_dir:
+        return cast_path([central_dir, "rclone", "rclone.conf"])
     return config_file_path
 
 
@@ -183,6 +199,13 @@ def connection_options(
     return connection_options_generator
 
 
+def get_binary_map() -> Dict[str, str]:
+    map = {}
+    for name, envvar in EXECUTABLE_PATH_ENV_VAR_MAPPING.items():
+        map[name] = os.getenv(envvar.value, name)
+    return map
+
+
 def get_and_validate_storage_box_connection(
     identifier: str = None,
     host: str = None,
@@ -202,10 +225,12 @@ def get_and_validate_storage_box_connection(
         conman = ConnectionManager(target_config_file=config_file_path)
         con = conman.get_connection(identifier=identifier)
         if con is None:
-            raise ValueError(
+            raise click.UsageError(
                 f"Could not find a connection with the identifier '{identifier}'. Use 'hsbt listConnection' to see available connections and/or create a new connection with 'hsbt setConnection'"
             )
         hsbt = HetznerStorageBox.from_connection(con)
+
+        hsbt.binaries = get_binary_map()
     else:
         hsbt = HetznerStorageBox(
             host=host,
@@ -214,6 +239,7 @@ def get_and_validate_storage_box_connection(
                 target_dir=ssh_key_dir, identifier=identifier if identifier else host
             ),
         )
+        hsbt.binaries = get_binary_map()
     if force_password_use or (
         validate_connection and not hsbt.public_key_is_deployed()
     ):
@@ -226,7 +252,11 @@ def get_and_validate_storage_box_connection(
         hsbt.password = password
         if not force_password_use:
             # first time use of connection. We will create the if necessary and deploy it to the Hetzner storageBox
-            hsbt.deploy_public_key_if_not_done()
+            key_just_deployd: bool = hsbt.deploy_public_key_if_not_done()
+            if key_just_deployd:
+                click.echo(
+                    f"Deployd public key '{hsbt.key_manager.public_key_path}' at '{hsbt.host}'."
+                )
     return hsbt
 
 
@@ -298,6 +328,46 @@ def set_connection(
     click.echo(f"\t{con}")
 
     # ConnectionManager(target_config_file=)
+
+
+@cli.command(
+    name="repairConnection",
+    help="Check if keys and known_hosts_file are existing valid, and deployd. If not try to fix it.",
+)
+@click.option(
+    "-i",
+    "--identifier",
+    type=click.STRING,
+    prompt="Identifying name for the connection",
+    help="An identifier to point to the connection in all other commands.",
+)
+@click.option(
+    "-c",
+    "--config-file-path",
+    type=click.STRING,
+    required=False,
+    help="hsbt saves connection infos into a json file. By default root will store connections into '/etc/hetzner_sbt_connections.json' and any other user in '~/.config/hetzner_sbt_connections.json'",
+    default="/etc/hetzner_sbt_connections.json"
+    if is_root()
+    else "~/.config/hetzner_sbt_connections.json",
+)
+def repair_connection(identifier: str, config_file_path: str):
+    config_file_path: Path = get_config_file_path(config_file_path)
+
+    connection_manager = ConnectionManager(target_config_file=config_file_path)
+    con = connection_manager.get_connection(identifier=identifier)
+    if con is None:
+        raise click.UsageError(
+            f"Could not find a connection with the identifier '{identifier}' to be repaired. Use 'hsbt listConnection' to see available connections and/or create a new connection with 'hsbt setConnection'"
+        )
+    hsbt = get_and_validate_storage_box_connection(
+        identifier=identifier, validate_connection=True
+    )
+    if hsbt.public_key_is_deployed():
+        click.echo("Connection seems to work (again).")
+    else:
+        # todo: provide some more data for debugging
+        raise ConnectionError("Can not repair connection.")
 
 
 @cli.command(
@@ -383,7 +453,7 @@ def list_connections(format_output, config_file_path):
 
 @cli.command(
     name="remoteCmd",
-    help="Run a command at the Hetzner storage box. See https://docs.hetzner.com/robot/storage-box/access/access-ssh-rsync-borg#available-commands for available commands",
+    help="Run a command at the Hetzner storage box. See https://docs.hetzner.com/robot/storage-box/access/access-sshsync-borg#available-commands for available commands",
 )
 @click.option(
     "-i",
@@ -448,6 +518,12 @@ def run_remote_command(
 )
 @connection_options(with_prompting=True, optional=True)
 @click.option(
+    "-r",
+    "--rclone-config-file",
+    type=click.STRING,
+    default=None,
+)
+@click.option(
     "-m",
     "--mount-point",
     type=click.STRING,
@@ -457,7 +533,7 @@ def run_remote_command(
     "--mount-tool",
     type=click.Choice(["sshfs", "rclone"], case_sensitive=False),
     multiple=False,
-    default=None,
+    default="rclone",
 )
 def mount(
     identifier: str,
@@ -467,20 +543,39 @@ def mount(
     password: str,
     config_file_path: str,
     force_password_use: str,
+    rclone_config_file: str,
     mount_point: str,
     mount_tool: Literal["sshfs", "rclone"],
 ):
+    hsbt: HetznerStorageBox = get_and_validate_storage_box_connection(
+        identifier=identifier,
+        host=host,
+        user=user,
+        ssh_key_dir=ssh_key_dir,
+        password=password,
+        config_file_path=config_file_path,
+        force_password_use=force_password_use,
+    )
     if mount_tool == "sshfs":
         log.warning(
             "sshfs is unmaintained at the moment. see https://github.com/libfuse/sshfs for more details. \
             It is recommended to use rclone (https://rclone.org/commands/rclone_mount/) as mounting tool. \
-            Just use the '-t' or '--mount-tool' parameter."
+            Just use the '-t rclone' or '--mount-tool=rclone' parameter."
         )
+        hsbt.mount_storage_box_via_sshfs(local_mountpoint=mount_point)
+    elif mount_tool == "rclone":
+        rclone = Rclone(
+            storage_box_manager=hsbt,
+            config_file_path=get_rclone_config_file_path(rclone_config_file),
+        )
+        rclone.binaries = get_binary_map()
+        rclone.generate_config_file_if_not_exists()
+        rclone.mount(mount_point)
 
 
 @cli.command(
     name="mountPerm",
-    help="Run a command at the Hetzner storage box. See https://docs.hetzner.com/robot/storage-box/access/access-ssh-rsync-borg#available-commands for available commands",
+    help="Run a command at the Hetzner storage box. See https://docs.hetzner.com/robot/storage-box/access/access-sshsync-borg#available-commands for available commands",
 )
 @click.option(
     "-i",

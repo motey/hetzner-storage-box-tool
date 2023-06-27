@@ -1,5 +1,5 @@
 import os
-from typing import Union, Annotated, List
+from typing import Union, Annotated, List, Literal
 from pathlib import Path, PurePath
 from hsbt.utils import run_command, cast_path
 import logging
@@ -26,6 +26,8 @@ class KeyManager:
         self.public_key_path: Path = None
         self.public_key_rfc_path: Path = None
         self.known_host_path: Path = None
+        self.key_alg: Literal["ed25519", "rsa"] = "ed25519"
+        self.rsa_key_length_bits: int = 4096
         self._generate_key_pathes()
 
     def _generate_key_pathes(self):
@@ -34,9 +36,7 @@ class KeyManager:
         self.private_key_path = Path(PurePath(self.target_dir, private_key_file))
         self.public_key_path = Path(PurePath(self.target_dir, public_key_file))
 
-    def ssh_keygen(
-        self, overwrite_if_exists: bool = False, exists_ok=False, key_length: int = 2048
-    ):
+    def ssh_keygen(self, overwrite_if_exists: bool = False, exists_ok=False):
         if (
             self.validate_if_keys_exists_and_valid()
             and not overwrite_if_exists
@@ -52,7 +52,7 @@ class KeyManager:
         ):
             return
         run_command(
-            f'ssh-keygen -b {key_length} -t rsa -f {self.private_key_path} -q -N ""'
+            f'ssh-keygen -b {self.rsa_key_length_bits} -t {self.key_alg} -f {self.private_key_path} -q -N ""'
         )
 
     def gen_rfc4716_format_copy(
@@ -101,7 +101,6 @@ class KeyManager:
     def create_known_host_entry_if_not_exists(
         self,
         host: str,
-        target_file: str | Path = None,
         ports: int | str | List[int | str] = None,
     ):
         if ports:
@@ -111,25 +110,19 @@ class KeyManager:
                 ports = [str(p) for p in ports]
         else:
             ports = [None]
-        if target_file is None:
-            know_host_file: Path = self._get_known_host_path()
-        else:
-            know_host_file: Path = cast_path(target_file)
+        know_host_file: Path = self._get_known_host_path()
+
         for port in ports:
-            if not self.known_host_entry_exists(host, know_host_file, port=port):
+            if not self.known_host_entry_exists(host, port=port):
                 run_command(
-                    f"ssh-keyscan -t dsa,rsa,ecdsa,ed25519 {'-p ' + port if port else ''} {host} >> {know_host_file}"
+                    f"ssh-keyscan -t {self.key_alg} {'-p ' + port if port else ''} {host} >> {know_host_file}"
                 )
 
-    def known_host_entry_exists(
-        self, host: str, target_file: str | Path = None, port: str = None
-    ) -> bool:
+    def known_host_entry_exists(self, host: str, port: str = None) -> bool:
         # https://unix.stackexchange.com/a/31556
         # todo: this function may be a little bit shaky. improve.
-        if target_file is None:
-            know_host_file: Path = self._get_known_host_path()
-        else:
-            know_host_file: Path = cast_path(target_file)
+
+        know_host_file: Path = self._get_known_host_path()
         if not self.known_host_path.exists():
             return False
         try:

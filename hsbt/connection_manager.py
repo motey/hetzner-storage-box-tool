@@ -156,7 +156,7 @@ class ConnectionManager:
                 if conlist.get_connection(identifier=identifier) is not None:
                     if not os.access(source_file, os.W_OK):
                         raise PermissionError(
-                            f"Found connection '{identifier}' in '{source_file}'. But file is not writable. Please try again with sudo rights."
+                            f"Found connection '{identifier}' in '{source_file}'. But file is not writable. Please try again with correct/sudo permissions."
                         )
                     conlist.remove_connection(identifier)
                     with open(self.target_config_file, "w") as file:

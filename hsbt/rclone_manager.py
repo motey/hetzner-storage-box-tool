@@ -1,10 +1,10 @@
 from pathlib import Path, PurePath
 import logging
-from typing import List, Union
+from typing import List, Union, Dict
 from dataclasses import dataclass
 from pydantic import BaseModel
 
-import inspect
+import json
 
 from Configs import getConfig
 from hsbt.key_manager import KeyManager
@@ -23,21 +23,45 @@ class Rclone:
     ):
         self.storage_box_manager = storage_box_manager
         self.config_file_path: Path = cast_path(config_file_path)
+        self.binaries: Dict[str, str] = {"rclone": "rclone"}
 
-    def generate_config_file(self):
-        options = dict(
+    def _get_config_file_param(self) -> str:
+        return (
+            f'--config="{str(self.config_file_path)}"' if self.config_file_path else ""
+        )
+
+    def get_existing_config(self, name: str, missing_ok: bool = False) -> Dict | None:
+        command = f"""{self.binaries['rclone']} -q {self._get_config_file_param()} config dump"""
+        result = run_command(command)
+        configs = json.loads(result.stdout)
+        if name in configs:
+            return configs[name]
+        if missing_ok:
+            return None
+        raise ValueError(f"Can not find a rclone config by the name '{name}'")
+
+    def generate_config_file_if_not_exists(self) -> bool:
+        config = dict(
             type="sftp",
             host=self.storage_box_manager.host,
             user=self.storage_box_manager.user,
-            known_hosts_file=self.storage_box_manager.key_manager.known_host_path,
+            known_hosts_file=str(
+                self.storage_box_manager.key_manager._get_known_host_path()
+            ),
             port="23",
-            key_file=self.storage_box_manager.key_manager.private_key_path,
+            key_file=str(self.storage_box_manager.key_manager.private_key_path),
         )
+        existing_config = self.get_existing_config(
+            name=self.storage_box_manager.key_manager.identifier, missing_ok=True
+        )
+        if existing_config == config:
+            # all cool. nothing to do
+            return False
         # https://rclone.org/commands/rclone_config_create/
-        command = f"""rclone {'--config="' + str(self.config_file_path) + '"' if self.config_file_path else ''} config create {self.storage_box_manager.key_manager.identifier} sftp {' '.join(k+' "'+str(v)+'"' for k,v in options.items())}"""
-        log.debug("Create rclone config")
+        command = f"""{self.binaries['rclone']} {self._get_config_file_param()} config create {self.storage_box_manager.key_manager.identifier} sftp {' '.join(k+' "'+v+'"' for k,v in config.items())}"""
+        log.debug(f"Create rclone config")
         run_command(command)
-        return command
+        return True
 
     def bisync_storage_box(
         self,
@@ -63,4 +87,7 @@ class Rclone:
         )
 
     def mount(self, local_dir: str):
-        raise NotImplementedError()
+        command = f"{self.binaries['rclone']} {self._get_config_file_param()} mount {self.storage_box_manager.key_manager.identifier}:{self.storage_box_manager.remote_base_path} {local_dir}"
+        print(command)
+        cast_path(local_dir).mkdir(exist_ok=True, parents=True)
+        run_command(command)
