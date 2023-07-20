@@ -79,7 +79,10 @@ class Rclone:
         )
 
     def sync_from_storage_box_to_local(
-        self, local_dir: Union[str, Path], remote_path="/", verbose: bool = False
+        self,
+        local_dir: Union[str, Path],
+        remote_path: Path | str = "",
+        verbose: bool = False,
     ):
         raise NotImplementedError()
         return run_command(
@@ -88,6 +91,24 @@ class Rclone:
 
     def mount(self, local_dir: str):
         command = f"{self.binaries['rclone']} {self._get_config_file_param()} mount {self.storage_box_manager.key_manager.identifier}:{self.storage_box_manager.remote_base_path} {local_dir}"
+        print(command)
+        cast_path(local_dir).mkdir(exist_ok=True, parents=True)
+        run_command(command)
+
+    def mount_fstab(
+        self,
+        local_dir: str,
+        remote_path: Path | str = "",
+        fstab_path: Path | str = "/etc/fstab",
+        fstab_args: str = "rw,noauto,nofail,_netdev,x-systemd.automount,args2env,vfs_cache_mode=writes,cache_dir=/var/cache/rclone",
+        only_create_fstab_entry: bool = False,
+    ):
+        # https://rclone.org/commands/rclone_mount/#rclone-as-unix-mount-helper
+        # sftp1:subdir /mnt/data rclone rw,noauto,nofail,_netdev,x-systemd.automount,args2env,vfs_cache_mode=writes,config=/etc/rclone.conf,cache_dir=/var/cache/rclone 0 0
+
+        fstab = ConfigFileEditor(fstab_path, base_identifier="HSBT")
+
+        fstab_entry = f"{self.binaries['rclone']} {self._get_config_file_param()} mount {self.storage_box_manager.key_manager.identifier}:{self.storage_box_manager.remote_base_path} {local_dir}"
         print(command)
         cast_path(local_dir).mkdir(exist_ok=True, parents=True)
         run_command(command)

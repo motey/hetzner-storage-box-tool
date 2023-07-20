@@ -199,7 +199,7 @@ def connection_options(
     return connection_options_generator
 
 
-def get_binary_map() -> Dict[str, str]:
+def get_executable_binary_path_map() -> Dict[str, str]:
     map = {}
     for name, envvar in EXECUTABLE_PATH_ENV_VAR_MAPPING.items():
         map[name] = os.getenv(envvar.value, name)
@@ -230,7 +230,7 @@ def get_and_validate_storage_box_connection(
             )
         hsbt = HetznerStorageBox.from_connection(con)
 
-        hsbt.binaries = get_binary_map()
+        hsbt.binaries = get_executable_binary_path_map()
     else:
         hsbt = HetznerStorageBox(
             host=host,
@@ -239,7 +239,7 @@ def get_and_validate_storage_box_connection(
                 target_dir=ssh_key_dir, identifier=identifier if identifier else host
             ),
         )
-        hsbt.binaries = get_binary_map()
+        hsbt.binaries = get_executable_binary_path_map()
     if force_password_use or (
         validate_connection and not hsbt.public_key_is_deployed()
     ):
@@ -560,7 +560,7 @@ def mount(
         log.warning(
             "sshfs is unmaintained at the moment. see https://github.com/libfuse/sshfs for more details. \
             It is recommended to use rclone (https://rclone.org/commands/rclone_mount/) as mounting tool. \
-            Just use the '-t rclone' or '--mount-tool=rclone' parameter."
+            Just use the '-t rclone' / '--mount-tool=rclone' parameter."
         )
         hsbt.mount_storage_box_via_sshfs(local_mountpoint=mount_point)
     elif mount_tool == "rclone":
@@ -568,7 +568,7 @@ def mount(
             storage_box_manager=hsbt,
             config_file_path=get_rclone_config_file_path(rclone_config_file),
         )
-        rclone.binaries = get_binary_map()
+        rclone.binaries = get_executable_binary_path_map()
         rclone.generate_config_file_if_not_exists()
         rclone.mount(mount_point)
 
@@ -601,9 +601,19 @@ def mount_permanent(
     force_password_use: str,
     mount_point: str,
     mount_tool: Literal["sshfs", "rclone"],
-    mount_style: Literal["static", "systemd-automount", "autofs"],
+    mount_style: Literal["fstab", "systemd-automount", "autofs"],
 ):
-    pass
+    if mount_style in ["systemd-automount", "autofs"]:
+        raise NotImplementedError()
+    hsbt: HetznerStorageBox = get_and_validate_storage_box_connection(
+        identifier=identifier,
+        host=host,
+        user=user,
+        ssh_key_dir=ssh_key_dir,
+        password=password,
+        config_file_path=config_file_path,
+        force_password_use=force_password_use,
+    )
 
 
 def available_space(connection_identifier: str):
