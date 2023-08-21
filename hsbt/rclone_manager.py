@@ -25,9 +25,11 @@ class Rclone:
         self.config_file_path: Path = cast_path(config_file_path)
         self.binaries: Dict[str, str] = {"rclone": "rclone"}
 
-    def _get_config_file_param(self) -> str:
+    def _get_config_file_param(self, prefix: str = "--") -> str:
         return (
-            f'--config="{str(self.config_file_path)}"' if self.config_file_path else ""
+            f'{prefix}config="{str(self.config_file_path)}"'
+            if self.config_file_path
+            else ""
         )
 
     def get_existing_config(self, name: str, missing_ok: bool = False) -> Dict | None:
@@ -107,7 +109,7 @@ class Rclone:
         # sftp1:subdir /mnt/data rclone rw,noauto,nofail,_netdev,x-systemd.automount,args2env,vfs_cache_mode=writes,config=/etc/rclone.conf,cache_dir=/var/cache/rclone 0 0
 
         fstab = ConfigFileEditor(fstab_path, base_identifier="HSBT")
-
+        fstab_line = f"{self.storage_box_manager.key_manager.identifier}:{self.storage_box_manager.remote_base_path} {local_dir} rclone rw,noauto,nofail,_netdev,args2env,vfs_cache_mode=writes,{self._get_config_file_param(prefix='')},cache_dir=/var/cache/rclone 0 0"
         fstab_entry = f"{self.binaries['rclone']} {self._get_config_file_param()} mount {self.storage_box_manager.key_manager.identifier}:{self.storage_box_manager.remote_base_path} {local_dir}"
         print(command)
         cast_path(local_dir).mkdir(exist_ok=True, parents=True)

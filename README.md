@@ -1,5 +1,5 @@
 # hetzner-storage-box-tool
-Collection of scripts wrapped into a CLI-bash-tool for common tasks with a hetzner storage box written in python
+CLI-bash-tool for some common tasks with a hetzner storage box written in python
 
 State: WIP (not usable yet)
 
@@ -19,7 +19,7 @@ HSBT_SSH_KEY_FILE_DIR - If key is not in ~/.ssh you can provide an alternative d
 
 # Basic Usage
 
-**(This is just a documention preview. Package is not yet usabe)**
+**(This is just a documention preview. Package is not yet usable)**
 
 `hsbt --help`
 

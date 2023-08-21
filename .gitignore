@@ -164,3 +164,4 @@ version.py
 fstab
 config.json
 test/
+dzdbakcuptest.sh

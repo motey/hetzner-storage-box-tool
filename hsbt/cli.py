@@ -218,6 +218,7 @@ def get_and_validate_storage_box_connection(
 ) -> HetznerStorageBox:
     config_file_path: Path = get_config_file_path(config_file_path)
     ssh_key_dir: Path = get_ssh_dir(ssh_key_dir)
+    con = None
     if password is None:
         password = cast_path(os.getenv(EnvVarNames.PASSWORD, default=None))
     hsbt: HetznerStorageBox = None
@@ -245,7 +246,7 @@ def get_and_validate_storage_box_connection(
     ):
         if password is None:
             password = click.prompt(
-                f"Password for Hetzner Storage Box user {user}",
+                f"Password for Hetzner Storage Box user {user if con is None else con.user}",
                 type=click.STRING,
                 hide_input=True,
             )
@@ -322,7 +323,7 @@ def set_connection(
     )
     if not skip_key_deployment:
         get_and_validate_storage_box_connection(
-            con.identifier, validate_connection=True
+            con.identifier, validate_connection=True, config_file_path=config_file_path
         )
     click.echo(f"Saved connection at '{connection_manager.target_config_file}' as:")
     click.echo(f"\t{con}")
@@ -463,7 +464,7 @@ def list_connections(format_output, config_file_path):
     default="",
     callback=conditonal_connection_prompts,
 )
-@connection_options(with_prompting=True, optional=True)
+@connection_options(with_prompting=False, optional=True)
 @click.option(
     "-n",
     "--no-exec",
@@ -483,7 +484,7 @@ def run_remote_command(
     ssh_key_dir: str | Path,
     password: str,
     config_file_path: str,
-    force_password_use: str,
+    force_password_use: bool,
     command: str,
     no_exec: bool,
 ) -> str:
@@ -604,7 +605,9 @@ def mount_permanent(
     mount_style: Literal["fstab", "systemd-automount", "autofs"],
 ):
     if mount_style in ["systemd-automount", "autofs"]:
-        raise NotImplementedError()
+        raise NotImplementedError(
+            'mount-style "systemd-automount" and "autofs" is not implemented yet.'
+        )
     hsbt: HetznerStorageBox = get_and_validate_storage_box_connection(
         identifier=identifier,
         host=host,
