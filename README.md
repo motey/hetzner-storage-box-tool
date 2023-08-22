@@ -46,4 +46,10 @@ drwx------   2 u111111  u111111    4 Nov 15  2021 .ssh
 drwxrwxr-x   5 u111111  u111111    5 May 30  2021 backup
 ```
 
-`hsbt mount -i myBox1 -l /mnt/hetzner/mybox`
+## On the fly mount
+
+`hsbt mount -i myBox1 -mp /mnt/hetzner/mybox`
+
+## Permanent mount via fstab
+
+`hsbt mountPerm -i myBox1 --mount-point /mnt/testmount`

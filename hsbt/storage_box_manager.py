@@ -373,19 +373,21 @@ class HetznerStorageBox:
         remove: bool = False,
         user_id: str | int = None,
         group_id: str | int = None,
+        remote_dir: str | Path = None,
     ):
         if user_id is None:
             user_id = os.getuid()
         if group_id is None:
             group_id = os.getgid()
+        remote_dir = self.remote_base_path if remote_dir is None else remote_dir
         user_id = str(user_id)
         group_id = str(group_id)
-        identifier = f"{self.user}@{self.host}:{self.remote_base_path} {local_mountpoint} {self.key_manager.identifier}"
+        identifier = f"{self.user}@{self.host}:{remote_dir} {local_mountpoint} {self.key_manager.identifier}"
         options = self._get_ssh_options(pw=None, verbose=False, only_ssh_o_options=True)
         # hackfix - PubkeyAuthentication is not compatible iwth fuse.sshfs
         options.pop("PubkeyAuthentication=")
         # /hackfix
-        fstab_entry = f"{self.user}@{self.host}:{self.remote_base_path} {local_mountpoint} fuse.sshfs {','.join(k+v for k,v in  options.items())},_netdev,delay_connect,users,uid={user_id},gid={group_id},reconnect 0 0"
+        fstab_entry = f"{self.user}@{self.host}:{remote_dir} {local_mountpoint} fuse.sshfs {','.join(k+v for k,v in  options.items())},_netdev,delay_connect,users,uid={user_id},gid={group_id},reconnect 0 0"
         self._mount_via_fstab(
             local_mountpoint=local_mountpoint,
             identifier=identifier,

@@ -81,8 +81,8 @@ def conditonal_connection_prompts(
                 other_param.default = None
 
     else:
-        click.echo(
-            "No connection identifier ('-i'/'--identifier') provided. Will prompt for connection details."
+        log.debug(
+            "No connection identifier ('-i'/'--identifier') provided. Will prompt for connection details if password-only mode ('-f') is not forced."
         )
     return connection_identifier
 
@@ -464,7 +464,7 @@ def list_connections(format_output, config_file_path):
     default="",
     callback=conditonal_connection_prompts,
 )
-@connection_options(with_prompting=False, optional=True)
+@connection_options(with_prompting=True, optional=True)
 @click.option(
     "-n",
     "--no-exec",
@@ -525,12 +525,12 @@ def run_remote_command(
     default=None,
 )
 @click.option(
-    "-m",
+    "-mp",
     "--mount-point",
     type=click.STRING,
 )
 @click.option(
-    "-t",
+    "-mt",
     "--mount-tool",
     type=click.Choice(["sshfs", "rclone"], case_sensitive=False),
     multiple=False,
@@ -588,9 +588,60 @@ def mount(
 )
 @connection_options(with_prompting=True, optional=True)
 @click.option(
+    "-r",
+    "--remote-path",
+    help="Remote path to mount localy. Use a relative path, if you are not sure how to access the Hetzner Storage Box home dir.",
+    type=click.STRING,
+    default=".",
+)
+@click.option(
     "-m",
     "--mount-point",
     type=click.STRING,
+)
+@click.option(
+    "-ms",
+    "--mount-style",
+    type=click.Choice(["fstab", "systemd-automount", "autofs"], case_sensitive=False),
+    help="Define the mount as fstab entry, as systemd-automount unit or with autofs.",
+    multiple=False,
+    default="fstab",
+)
+@click.option(
+    "-mt",
+    "--mount-tool",
+    type=click.Choice(["sshfs", "rclone"], case_sensitive=False),
+    help="Mount via fuse sshfs or fuse rcone. rclone will become the default in a future version, as sshfs is not maintained at the moment.",
+    multiple=False,
+    default="sshfs",
+)
+@click.option(
+    "-ff",
+    "--fstab-file",
+    type=click.STRING,
+    help="Is it possible to use an alternative fstab file e.g. 'mount --fstab /tmp/mycustom_fstab [...]'. Define it here. Also handy for testing.",
+    default="/etc/fstab",
+)
+@click.option(
+    "-ui",
+    "--uid",
+    type=click.STRING,
+    help="Define the 'uid=' parameter for the festab entry. Default to current user",
+    default=None,
+)
+@click.option(
+    "-gi",
+    "--uid",
+    type=click.STRING,
+    help="Define the 'gid=' parameter for the festab entry. Default to current users primary group",
+    default=None,
+)
+@click.option(
+    "-rc",
+    "--rclone-config-file",
+    type=click.STRING,
+    help="If you use an alternative path for the rcloen config, define here",
+    default=None,
 )
 def mount_permanent(
     identifier: str,
@@ -600,9 +651,14 @@ def mount_permanent(
     password: str,
     config_file_path: str,
     force_password_use: str,
+    remote_path: str | Path,
     mount_point: str,
     mount_tool: Literal["sshfs", "rclone"],
     mount_style: Literal["fstab", "systemd-automount", "autofs"],
+    fstab_file: str | Path,
+    uid: str = None,
+    gid: str = None,
+    rclone_config_file: str | Path = None,
 ):
     if mount_style in ["systemd-automount", "autofs"]:
         raise NotImplementedError(
@@ -617,6 +673,17 @@ def mount_permanent(
         config_file_path=config_file_path,
         force_password_use=force_password_use,
     )
+    if mount_tool == "sshfs":
+        hsbt.mount_storage_box_via_fstab_via_sshfs(
+            local_mountpoint=mount_point,
+            fstab_file=fstab_file,
+            user_id=uid,
+            group_id=gid,
+        )
+    elif mount_tool == "rclone":
+        raise NotImplementedError(
+            'mount_tool via fuse "rclone" is not implemented yet.'
+        )
 
 
 def available_space(connection_identifier: str):
