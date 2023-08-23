@@ -640,7 +640,7 @@ def mount(
 )
 @click.option(
     "-gi",
-    "--uid",
+    "--gid",
     type=click.STRING,
     help="Define the 'gid=' parameter for the festab entry. Default to current users primary group",
     default=None,
