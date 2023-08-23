@@ -3,12 +3,14 @@ CLI-bash-tool for some common tasks with a hetzner storage box written in python
 
 State: WIP (not usable yet)
 
+# install alpha version
+## install requierments
 
-# reqs
-sshpass
-ssh-keygen
-ssh-keyscan
+apt install openssh-client sshfs sshpass git python
 
+## Install python package
+
+pip install git+https://github.com/motey/hetzner-storage-box-tool.git
 
 # ENV Vars
 
