@@ -294,6 +294,14 @@ def cli(debug):
     default=False,
 )
 @click.option(
+    "-e",
+    "--exists-ok",
+    type=click.BOOL,
+    is_flag=True,
+    help="If a connection configuration with the same identifier already exists just exit without any error",
+    default=False,
+)
+@click.option(
     "-k",
     "--skip-key-deployment",
     type=click.BOOL,
@@ -307,6 +315,7 @@ def set_connection(
     user: str,
     ssh_key_dir: str | Path,
     overwrite_existing: bool,
+    exists_ok: bool,
     config_file_path: str,
     skip_key_deployment: bool,
 ):
@@ -319,7 +328,7 @@ def set_connection(
         host=host,
         key_dir=ssh_key_dir,
         overwrite_existing=overwrite_existing,
-        exists_ok=False,
+        exists_ok=exists_ok,
     )
     if not skip_key_deployment:
         get_and_validate_storage_box_connection(
