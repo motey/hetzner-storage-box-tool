@@ -689,6 +689,9 @@ def mount_permanent(
             user_id=uid,
             group_id=gid,
         )
+        click.echo(
+            f"Mounted storage box '{hsbt.host}' at {mount_point}. Config can be found at '{fstab_file}'"
+        )
     elif mount_tool == "rclone":
         raise NotImplementedError(
             'mount_tool via fuse "rclone" is not implemented yet.'
