@@ -36,6 +36,7 @@ class ConnectionManager:
             if (
                 other_connection.identifier in self.connections
                 and not ovewrite_existing
+                and not exist_ok
             ):
                 raise ValueError(
                     f"Connection '{other_connection.identifier}' already exist."
