@@ -387,7 +387,7 @@ class HetznerStorageBox:
         # hackfix - PubkeyAuthentication is not compatible iwth fuse.sshfs
         options.pop("PubkeyAuthentication=")
         # /hackfix
-        fstab_entry = f"{self.user}@{self.host}:{remote_dir} {local_mountpoint} fuse.sshfs {','.join(k+v for k,v in  options.items())},_netdev,delay_connect,users,uid={user_id},gid={group_id},reconnect 0 0"
+        fstab_entry = f"{self.user}@{self.host}:{remote_dir} {local_mountpoint} fuse.sshfs {','.join(k+v for k,v in  options.items())},_netdev,delay_connect,users,uid={user_id},gid={group_id},allow_other,reconnect 0 0"
         self._mount_via_fstab(
             local_mountpoint=local_mountpoint,
             identifier=identifier,
