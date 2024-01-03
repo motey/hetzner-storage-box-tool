@@ -17,7 +17,7 @@ setup(
     author="Tim Bleimehl",
     license="MIT",
     packages=["hsbt"],
-    install_requires=["pydantic", "click","pyaml"],
+    install_requires=["pydantic", "click","pyaml","requests"],
     extras_require={"test": []},
     python_requires=">=3.10",
     zip_safe=False,
