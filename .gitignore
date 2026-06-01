@@ -165,3 +165,4 @@ fstab
 config.json
 test/
 dzdbakcuptest.sh
+local_tmp_storagebox_coordinates.txt

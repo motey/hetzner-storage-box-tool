@@ -1,0 +1,33 @@
+[project]
+name = "hsbt"
+version = "0.1.0"
+description = "CLI tool for common tasks with a Hetzner Storage Box."
+authors = [{name = "Tim Bleimehl"}]
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "pydantic>=2",
+    "click>=8",
+    "pyaml>=23",
+    "requests>=2",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8",
+    "pytest-mock>=3",
+]
+
+[project.scripts]
+hsbt = "hsbt.cli:cli"
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.pdm.build]
+includes = ["hsbt/"]

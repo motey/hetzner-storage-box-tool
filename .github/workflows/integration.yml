@@ -1,0 +1,69 @@
+# Integration tests against a real Hetzner Storage Box.
+#
+# SETUP — add these secrets to your repository:
+#   Settings → Secrets and variables → Actions → New repository secret
+#
+#   HSBT_TEST_HOST       e.g. u000001.your-storagebox.de
+#   HSBT_TEST_USER       e.g. u000001
+#   HSBT_TEST_PASSWORD   your account password
+#   HSBT_TEST_SSH_PORT   (optional) defaults to 23
+#
+# Without these secrets the job still runs but all tests are skipped —
+# this is intentional so fork PRs don't fail.
+#
+# GitHub automatically redacts any secret value that appears in log output,
+# so the password is safe even if a test prints diagnostic information.
+
+name: Integration Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "hsbt/**"
+      - "tests/integration/**"
+      - "pyproject.toml"
+  pull_request:
+    branches: [main]
+  workflow_dispatch:     # allow manual trigger from the Actions tab
+
+jobs:
+  integration:
+    name: Integration tests (Python 3.14)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install PDM
+        run: pip install pdm --quiet
+
+      # Cache the SSH keypair so we only deploy it once per key-dir hash.
+      # The cache key changes when the repo or branch changes, which triggers
+      # a fresh key deployment (using the password) on the next run.
+      - name: Cache integration SSH keys
+        uses: actions/cache@v4
+        with:
+          path: ~/.hsbt-integration-keys
+          key: hsbt-integration-keys-${{ github.repository }}-${{ github.ref_name }}
+
+      - name: Install dependencies
+        run: pdm install -G test --quiet
+
+      # Credentials go in as env vars — GitHub masks them in all log lines.
+      # HSBT_TEST_PASSWORD is only used when the cached key is absent or stale.
+      # --tb=short keeps tracebacks compact; avoids local-variable dumps that
+      # could theoretically expose credential values in non-secret env vars.
+      - name: Run integration tests
+        env:
+          HSBT_TEST_HOST: ${{ secrets.HSBT_TEST_HOST }}
+          HSBT_TEST_USER: ${{ secrets.HSBT_TEST_USER }}
+          HSBT_TEST_PASSWORD: ${{ secrets.HSBT_TEST_PASSWORD }}
+          HSBT_TEST_SSH_PORT: ${{ secrets.HSBT_TEST_SSH_PORT }}
+          HSBT_TEST_KEY_DIR: ~/.hsbt-integration-keys
+        run: pdm run pytest tests/integration/ -v --tb=short
