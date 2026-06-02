@@ -104,10 +104,25 @@ fi
 
 echo "==> Target: ${HSBT_TEST_USER}@${HSBT_TEST_HOST} (port ${HSBT_TEST_SSH_PORT:-23})"
 
-echo "==> Installing dependencies..."
-pdm install -G test -q
+VENV_PYTEST="$SCRIPT_DIR/.venv/bin/pytest"
+VENV_PIP="$SCRIPT_DIR/.venv/bin/pip"
+
+if command -v pdm &>/dev/null; then
+    echo "==> Installing dependencies via pdm..."
+    pdm install -G test -q
+    PYTEST_CMD="pdm run pytest"
+elif [[ -x "$VENV_PYTEST" ]]; then
+    # pdm not on PATH (e.g. running under sudo) — use the existing venv directly.
+    echo "==> pdm not found; using existing venv at .venv"
+    PYTEST_CMD="$VENV_PYTEST"
+else
+    echo "Error: neither pdm nor .venv/bin/pytest found."
+    echo "Run './run_tests.sh' once as your normal user to build the venv first,"
+    echo "then re-run this script (with sudo if needed)."
+    exit 1
+fi
 
 echo "==> Running integration tests..."
 # --tb=short: keeps tracebacks compact and avoids printing local variable
 # values, which reduces the risk of leaking credentials in terminal output.
-pdm run pytest tests/integration/ -v --tb=short "${PYTEST_ARGS[@]:+${PYTEST_ARGS[@]}}"
+$PYTEST_CMD tests/integration/ -v --tb=short "${PYTEST_ARGS[@]:+${PYTEST_ARGS[@]}}"

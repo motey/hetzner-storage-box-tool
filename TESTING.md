@@ -2,15 +2,16 @@
 
 The test suite is split into two independent layers:
 
-| Layer | Tests | Needs storage box | Time |
-|---|---|---|---|
-| **Unit tests** | 247 | No | ~0.5 s |
-| **Integration tests** | 24 | Yes | ~25 s |
+| Layer | Tests | Needs storage box | Needs root | Time |
+|---|---|---|---|---|
+| **Unit tests** | 425 | No | No | ~0.7 s |
+| **Integration tests — Tier 1** | ~50 | Yes | No | ~25 s |
+| **Integration tests — Tier 2** | ~10 | Yes | Yes | ~5 s |
 
 Both layers are useful on their own. Running only the unit tests is already a
 meaningful quality check — it exercises all command-building logic, file I/O,
-fstab formatting, config parsing, and CLI option wiring without requiring any
-network access or credentials.
+fstab/unit-file formatting, config parsing, and CLI option wiring without
+requiring any network access or credentials.
 
 ---
 
@@ -49,10 +50,12 @@ test dependencies, and runs pytest. Any extra flags are forwarded to pytest:
 | `test_mount_sshfs.py` | fstab entry format; idempotency; `is_mounted()` |
 | `test_mount_cifs.py` | Credential file creation; fstab entry; mount command |
 | `test_mount_rclone.py` | Config generation; fstab entry; sync / bisync flags |
+| `test_mount_systemd.py` | Unit name generation; `.mount` / `.automount` file content; `systemctl` call args; lifecycle |
+| `test_mount_autofs.py` | Map entry format; `auto.master` entry; idempotency; lifecycle |
 | `test_smb_cifs_secret_manager.py` | Write / read / delete; `0o600` / `0o660` permissions |
-| `test_storage_box.py` | `get_mount_strategy()` dispatch; facade property pass-throughs |
+| `test_storage_box.py` | `get_mount_strategy()` dispatch for all tools and styles; facade property pass-throughs |
 | `test_cli_connection.py` | `set-connection`, `list-connections`, `delete-connection` via Click test runner |
-| `test_cli_mount.py` | `mount`, `mount-perm`, `unmount` via Click test runner |
+| `test_cli_mount.py` | `mount`, `mount-perm`, `unmount` (all `--mount-style` values) via Click test runner |
 | `test_cli_transfer.py` | `remote-cmd`, `available-space`, `upload`, `download` via Click test runner |
 
 All subprocess calls are mocked — no SSH connections are made.
@@ -65,15 +68,36 @@ Integration tests connect to a real Hetzner Storage Box. They catch things the
 unit tests cannot: protocol quirks, restricted-shell limitations, real `ls`
 output format changes, SCP behaviour, and key-deployment edge cases.
 
+### Tiers
+
+Integration tests are split into two tiers by privilege level:
+
+**Tier 1 — no root required**
+Runs against the live storage box over SSH. Tests connectivity, file listing,
+disk space, directory creation, SCP roundtrip, the StorageBox facade, and
+systemd/autofs unit/map file generation into temporary directories.
+
+**Tier 2 — root required**
+Writes systemd unit files to `/etc/systemd/system/` and autofs map entries
+to `/etc/auto.master`. Verifies that `systemctl enable/disable` and autofs
+reload actually apply the configuration. These tests are automatically skipped
+unless running as root.
+
 ### What is tested
 
-- **Connectivity** — `df` succeeds over the real SSH tunnel
-- **File listing** — `ls -la` output parsed into `FileInfo` objects
-- **Disk space** — `df` / `df -h` output fields and human-readable units
-- **Remote directory creation** — `mkdir -p` including nested paths
-- **File transfer** — text and binary upload + download roundtrip via SCP
-- **StorageBox facade** — list, disk space, and `run_remote_command` through the high-level API
-- **Mount strategy dispatch** — correct strategy type returned for each tool (no actual mounting)
+**Tier 1 (storage box + no root):**
+- Connectivity — `df` succeeds over the real SSH tunnel
+- File listing — `ls -la` output parsed into `FileInfo` objects
+- Disk space — `df` / `df -h` output fields and human-readable units
+- Remote directory creation — `mkdir -p` including nested paths
+- File transfer — text and binary upload + download roundtrip via SCP
+- StorageBox facade — list, disk space, `run_remote_command`
+- Systemd strategy — unit file content (host, key path, type) written to `tmp_path`
+- Autofs strategy — map entry content, `auto.master` entry, idempotency, into `tmp_path`
+
+**Tier 2 (root + storage box):**
+- Systemd — unit files written to `/etc/systemd/system/`; `systemctl is-enabled` returns 0 after install; files removed and unit disabled after uninstall
+- Autofs — map file and `auto.master` entry written to `/etc`; both cleaned up after uninstall
 
 > **Note on Hetzner's restricted shell:** the SSH login shell on storage boxes
 > does not support `echo`, `whoami`, or other general Unix commands. Only a
@@ -85,11 +109,13 @@ output format changes, SCP behaviour, and key-deployment edge cases.
 - Python 3.14+ and PDM (same as unit tests)
 - `sshpass` installed locally (`apt install sshpass` / `brew install hudochenkov/sshpass/sshpass`)
 - A Hetzner Storage Box with **SSH access enabled** (Hetzner Robot → Storage Box → Settings)
+- For Tier 2 only: root privileges on the local machine + `sshfs` and/or `autofs` installed
 
-### Environment variables
+### Credentials
 
-Set these before running. All tests are **automatically skipped** when they
-are absent — no test failures, no errors.
+Set these before running, or place them in a `.env` file in the project root
+(the script loads it automatically). All tests are **automatically skipped**
+when these are absent — no test failures, no errors.
 
 | Variable | Required | Description |
 |---|---|---|
@@ -113,17 +139,33 @@ key must be redeployed (using the password) on every run. To avoid this, set
 export HSBT_TEST_KEY_DIR=~/.config/hsbt/integration-test-keys
 ```
 
-The directory is created automatically if it does not exist. After the first
-run the key is already on the box and subsequent runs do not need the password
-(though leaving it set is harmless).
+### .env file
 
-### Run locally
+Copy credentials into a `.env` file in the project root and the scripts load
+it automatically:
+
+```bash
+# .env
+HSBT_TEST_HOST=u000001.your-storagebox.de
+HSBT_TEST_USER=u000001
+HSBT_TEST_PASSWORD=yourpassword
+# HSBT_TEST_KEY_DIR=~/.config/hsbt/integration-test-keys
+```
+
+`.env` is gitignored — never commit real credentials.
+
+### Run locally (Tier 1, no root)
+
+```bash
+./run_integration_tests.sh
+```
+
+Or with credentials passed directly:
 
 ```bash
 export HSBT_TEST_HOST=u000001.your-storagebox.de
 export HSBT_TEST_USER=u000001
 export HSBT_TEST_PASSWORD=yourpassword
-
 ./run_integration_tests.sh
 ```
 
@@ -134,16 +176,63 @@ Extra pytest flags are forwarded:
 ./run_integration_tests.sh --tb=long           # verbose tracebacks
 ```
 
+### Run locally (Tier 2, root required)
+
+Tier 2 tests write to `/etc/systemd/system/` and `/etc/`, so they need root.
+`sudo` resets `PATH`, which means `pdm` is no longer found. The correct approach
+is to build the venv once as your normal user, then run pytest via the venv
+directly with `sudo -E` (which preserves your environment variables):
+
+```bash
+# Step 1 — build the venv once as your normal user (only needed once)
+./run_tests.sh
+
+# Step 2 — run the full integration suite (including Tier 2) as root
+sudo -E ./run_integration_tests.sh
+
+# Or target just the systemd/autofs tests:
+sudo -E .venv/bin/python -m pytest \
+    tests/integration/test_mount_systemd_live.py \
+    tests/integration/test_mount_autofs_live.py \
+    -v
+```
+
+`sudo -E` preserves your exported `HSBT_TEST_*` variables. If you are using a
+`.env` file instead of exported variables, load it first:
+
+```bash
+set -a && source .env && set +a
+sudo -E .venv/bin/python -m pytest tests/integration/ -v
+```
+
+The script handles the `pdm`-not-found case automatically: if `pdm` is not on
+`PATH` it falls back to `.venv/bin/pytest` directly, so
+`sudo -E ./run_integration_tests.sh` works without any manual steps as long as
+the venv has been built at least once.
+
 ### Isolation and cleanup
 
 Each test session creates a uniquely named working directory on the remote box
 (`_hsbt_integration_test_<8-char-id>/`) and removes it at teardown. Tests
 never read or write outside that directory.
 
+Tier 2 tests install and immediately remove systemd unit files and autofs map
+entries — they never actually trigger an automount.
+
 If a session is interrupted before teardown, clean up manually:
 
 ```bash
+# Remote workdir
 ssh -p 23 u000001@u000001.your-storagebox.de "rm -rf _hsbt_integration_test_*"
+
+# Tier 2 systemd leftovers (if any)
+sudo systemctl disable --now mnt-_hsbt_integration_test_systemd.automount 2>/dev/null || true
+sudo rm -f /etc/systemd/system/*_hsbt_integration_test*.{mount,automount}
+sudo systemctl daemon-reload
+
+# Tier 2 autofs leftovers (if any)
+sudo rm -f /etc/auto.hsbt_hsbt_integration
+# Remove the /- line from /etc/auto.master manually if needed
 ```
 
 ---
@@ -168,7 +257,9 @@ and add:
 
 - The workflow runs on every push to `main` that touches `hsbt/` or
   `tests/integration/`, and on manual dispatch.
-- When secrets are present all 24 integration tests run against the live box.
+- When secrets are present all Tier 1 integration tests run against the live box.
+- Tier 2 tests (root required) do not run in CI — they are designed for local
+  verification only.
 - When secrets are absent (e.g. pull requests from forks) all integration
   tests are skipped — the job still passes.
 - GitHub automatically redacts any secret value that appears in log output, so
@@ -188,15 +279,18 @@ watched paths.
 
 ```
 tests/
-├── conftest.py            # shared fixtures, real Hetzner ls/df output constants
-├── test_*.py              # 247 unit tests (no network)
+├── conftest.py                   # shared fixtures, real Hetzner ls/df output constants
+├── test_*.py                     # 425 unit tests (no network, no root)
 └── integration/
-    ├── conftest.py        # live transport fixture, remote workdir setup/teardown
-    ├── test_transport.py  # 15 real SshTransport tests
-    └── test_storage_box.py # 9 real StorageBox tests
+    ├── conftest.py               # live transport fixture, remote workdir setup/teardown
+    ├── test_transport.py         # SshTransport tests (Tier 1)
+    ├── test_storage_box.py       # StorageBox facade tests (Tier 1)
+    ├── test_mount_webdav_live.py # WebDAV mount tests (Tier 1)
+    ├── test_mount_systemd_live.py# systemd automount tests (Tier 1 + Tier 2)
+    └── test_mount_autofs_live.py # autofs mount tests (Tier 1 + Tier 2)
 
-run_tests.sh               # unit tests — no credentials needed
-run_integration_tests.sh   # integration tests — credentials required
+run_tests.sh                      # unit tests — no credentials or root needed
+run_integration_tests.sh          # integration tests — credentials required; root optional
 .github/workflows/
-└── integration.yml        # CI workflow for integration tests
+└── integration.yml               # CI workflow (Tier 1 only)
 ```

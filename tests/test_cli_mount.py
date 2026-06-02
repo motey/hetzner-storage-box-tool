@@ -108,7 +108,7 @@ class TestMountPermCommand:
             ])
         strategy.mount_permanent.assert_called_once()
 
-    def test_systemd_automount_style_raises(self, runner, tmp_path):
+    def test_systemd_automount_style_succeeds(self, runner, tmp_path):
         box, strategy = _mock_box()
         with patch("hsbt.cli.mount.build_storage_box", return_value=box):
             result = runner.invoke(cli, [
@@ -116,7 +116,39 @@ class TestMountPermCommand:
                 "--mount-point", str(tmp_path / "mnt"),
                 "--mount-style", "systemd-automount",
             ])
-        assert result.exit_code != 0
+        assert result.exit_code == 0, result.output
+
+    def test_systemd_automount_passes_mount_style(self, runner, tmp_path):
+        box, strategy = _mock_box()
+        with patch("hsbt.cli.mount.build_storage_box", return_value=box):
+            runner.invoke(cli, [
+                "mount-perm", *BASE_ARGS,
+                "--mount-point", str(tmp_path / "mnt"),
+                "--mount-style", "systemd-automount",
+            ])
+        call_kwargs = box.get_mount_strategy.call_args
+        assert call_kwargs[1]["mount_style"] == "systemd-automount"
+
+    def test_autofs_style_succeeds(self, runner, tmp_path):
+        box, strategy = _mock_box()
+        with patch("hsbt.cli.mount.build_storage_box", return_value=box):
+            result = runner.invoke(cli, [
+                "mount-perm", *BASE_ARGS,
+                "--mount-point", str(tmp_path / "mnt"),
+                "--mount-style", "autofs",
+            ])
+        assert result.exit_code == 0, result.output
+
+    def test_autofs_passes_mount_style(self, runner, tmp_path):
+        box, strategy = _mock_box()
+        with patch("hsbt.cli.mount.build_storage_box", return_value=box):
+            runner.invoke(cli, [
+                "mount-perm", *BASE_ARGS,
+                "--mount-point", str(tmp_path / "mnt"),
+                "--mount-style", "autofs",
+            ])
+        call_kwargs = box.get_mount_strategy.call_args
+        assert call_kwargs[1]["mount_style"] == "autofs"
 
     def test_custom_uid_gid_passed(self, runner, tmp_path):
         box, strategy = _mock_box()
@@ -162,6 +194,28 @@ class TestUnmountCommand:
             ])
         strategy.unmount.assert_called_once()
         strategy.unmount_permanent.assert_not_called()
+
+    def test_unmount_systemd_style_passes_mount_style(self, runner, tmp_path):
+        box, _ = _mock_box()
+        with patch("hsbt.cli.mount.build_storage_box", return_value=box):
+            runner.invoke(cli, [
+                "unmount", *BASE_ARGS,
+                "--mount-point", str(tmp_path / "mnt"),
+                "--mount-style", "systemd-automount",
+            ])
+        call_kwargs = box.get_mount_strategy.call_args
+        assert call_kwargs[1]["mount_style"] == "systemd-automount"
+
+    def test_unmount_autofs_style_passes_mount_style(self, runner, tmp_path):
+        box, _ = _mock_box()
+        with patch("hsbt.cli.mount.build_storage_box", return_value=box):
+            runner.invoke(cli, [
+                "unmount", *BASE_ARGS,
+                "--mount-point", str(tmp_path / "mnt"),
+                "--mount-style", "autofs",
+            ])
+        call_kwargs = box.get_mount_strategy.call_args
+        assert call_kwargs[1]["mount_style"] == "autofs"
 
 
 class TestAutoDetectConnection:

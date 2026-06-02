@@ -5,14 +5,17 @@ from typing import Dict, Literal
 
 from hsbt.key_manager import KeyManager
 from hsbt.models import Connection, FileInfoCollection
+from hsbt.mount.autofs import AutofsMountStrategy
 from hsbt.mount.base import MountStrategy
 from hsbt.mount.cifs import CifsMountStrategy
 from hsbt.mount.rclone import RcloneMountStrategy
 from hsbt.mount.sshfs import SshfsMountStrategy
+from hsbt.mount.systemd import SystemdMountStrategy
 from hsbt.process import CommandResult
 from hsbt.transport.ssh import SshTransport
 
 MountTool = Literal["sshfs", "cifs", "rclone", "webdav"]
+MountStyle = Literal["fstab", "systemd-automount", "autofs"]
 
 
 class StorageBox:
@@ -62,12 +65,35 @@ class StorageBox:
     def get_mount_strategy(
         self,
         tool: MountTool,
+        mount_style: MountStyle = "fstab",
         rclone_config_path: Path | None = None,
         smb_username: str | None = None,
         smb_password: str | None = None,
         smb_domain: str | None = None,
         webdav_password: str | None = None,
     ) -> MountStrategy:
+        if mount_style in ("systemd-automount", "autofs"):
+            if tool not in ("sshfs", "cifs"):
+                raise ValueError(
+                    f"mount_style='{mount_style}' only supports tool='sshfs' or tool='cifs', "
+                    f"got '{tool}'."
+                )
+            _tool = tool  # type: ignore[assignment]  # narrowed above
+            if mount_style == "systemd-automount":
+                return SystemdMountStrategy(
+                    self.ssh,
+                    mount_tool=_tool,
+                    smb_username=smb_username,
+                    smb_password=smb_password,
+                    smb_domain=smb_domain,
+                )
+            return AutofsMountStrategy(
+                self.ssh,
+                mount_tool=_tool,
+                smb_username=smb_username,
+                smb_password=smb_password,
+                smb_domain=smb_domain,
+            )
         if tool == "sshfs":
             return SshfsMountStrategy(self.ssh)
         if tool == "cifs":

@@ -153,19 +153,43 @@ Without a saved connection, pass host and user directly:
 hsbt mount -h u000001.your-storagebox.de -u u000001 --mount-point /mnt/mybox
 ```
 
-**Persistent mount** (writes an entry to `/etc/fstab` and mounts immediately):
+**Persistent mount** — three persistence styles are supported via `--mount-style`:
+
+| Style | Default config path | Description |
+|---|---|---|
+| `fstab` (default) | `/etc/fstab` | Classic fstab entry, mounts on boot |
+| `systemd-automount` | `/etc/systemd/system/` | systemd `.mount` + `.automount` unit — mounts on-demand, unmounts after idle |
+| `autofs` | `/etc` | autofs direct map — mounts on-demand via `automountd` |
 
 ```bash
+# fstab (default)
 hsbt mount-perm -i mybox --mount-point /mnt/mybox
 hsbt mount-perm -i mybox --mount-point /mnt/mybox --mount-tool rclone --uid 1000 --gid 1000
 hsbt mount-perm -i mybox --mount-point /mnt/mybox --mount-tool webdav --webdav-password secret
+
+# systemd automount — on-demand, idle-unmount after 10 minutes
+hsbt mount-perm -i mybox --mount-point /mnt/mybox --mount-style systemd-automount
+hsbt mount-perm -i mybox --mount-point /mnt/mybox --mount-style systemd-automount --mount-tool cifs \
+    --smb-username u000001 --smb-password secret
+
+# autofs — on-demand via automountd
+hsbt mount-perm -i mybox --mount-point /mnt/mybox --mount-style autofs
 ```
 
-**Unmount** (also removes the fstab entry by default):
+> **Note:** `--mount-style systemd-automount` and `--mount-style autofs` support `--mount-tool sshfs` and `--mount-tool cifs` only. They require root (`sudo`) to write to the system config directories.
+
+**Unmount** (also removes the persistent config entry by default):
 
 ```bash
+# fstab mount
 hsbt unmount -i mybox --mount-point /mnt/mybox
 hsbt unmount -i mybox --mount-point /mnt/mybox --keep-fstab   # only unmount, leave fstab intact
+
+# systemd automount
+hsbt unmount -i mybox --mount-point /mnt/mybox --mount-style systemd-automount
+
+# autofs
+hsbt unmount -i mybox --mount-point /mnt/mybox --mount-style autofs
 ```
 
 **Sync** remote to local using rclone:
@@ -175,6 +199,54 @@ hsbt sync -i mybox --local-dir /backup/mybox
 hsbt sync -i mybox --local-dir /backup/mybox --mode bisync     # bidirectional
 hsbt sync -i mybox --local-dir /backup/mybox --mode bisync --resync  # force full resync
 ```
+
+#### systemd automount
+
+`--mount-style systemd-automount` writes two systemd unit files:
+
+- **`<name>.mount`** — defines the actual mount (type, source, options)
+- **`<name>.automount`** — triggers the mount on the first filesystem access and automatically unmounts it after 10 minutes of inactivity (`TimeoutIdleSec=600`)
+
+The unit files are placed in `/etc/systemd/system/` (override with `--fstab-file`). The unit name is derived from the mountpoint path — `/mnt/mybox` becomes `mnt-mybox`.
+
+```bash
+# Install (requires sudo)
+sudo hsbt mount-perm -i mybox --mount-point /mnt/mybox --mount-style systemd-automount
+
+# The automount unit is enabled and started immediately.
+# Access /mnt/mybox to trigger the actual mount; it will disconnect automatically when idle.
+ls /mnt/mybox
+
+# Remove
+sudo hsbt unmount -i mybox --mount-point /mnt/mybox --mount-style systemd-automount
+```
+
+Supported mount tools: `sshfs` (default), `cifs`.
+
+#### autofs
+
+`--mount-style autofs` writes two files:
+
+- **`/etc/auto.hsbt_<identifier>`** — the autofs direct map, one entry per mountpoint
+- **`/etc/auto.master`** — a `/-` direct-map line pointing to the map file above
+
+The mount is triggered by the `automountd` daemon when the mountpoint is accessed, and released after `--timeout=60` seconds of inactivity.
+
+```bash
+# Install (requires sudo; autofs package must be installed)
+sudo apt install autofs        # Debian/Ubuntu
+sudo hsbt mount-perm -i mybox --mount-point /mnt/mybox --mount-style autofs
+
+# Access the mountpoint — autofs mounts automatically
+ls /mnt/mybox
+
+# Remove
+sudo hsbt unmount -i mybox --mount-point /mnt/mybox --mount-style autofs
+```
+
+> **Tip:** If you have multiple storage boxes, running `mount-perm --mount-style autofs` for each one appends entries to the **same** map file (`/etc/auto.hsbt_<identifier>`), so `auto.master` only ever gains one entry per connection.
+
+Supported mount tools: `sshfs` (default), `cifs`.
 
 ### File transfer and remote commands
 

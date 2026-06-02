@@ -162,9 +162,9 @@ Low priority. Only worth doing after Phases 8–9 are complete.
 
 | # | Item | Status |
 |---|------|--------|
-| 10.1 | `SystemdMountStrategy` — generate `.mount` + `.automount` unit files, `systemctl enable/start` | 🔁 |
-| 10.2 | `AutofsMountStrategy` — write `/etc/auto.master` entry and map file | 🔁 |
-| 10.3 | Wire `--mount-style=systemd-automount` and `--mount-style=autofs` into `mount-perm` | 🔁 |
+| 10.1 | `SystemdMountStrategy` — generate `.mount` + `.automount` unit files, `systemctl enable/start` | ✅ |
+| 10.2 | `AutofsMountStrategy` — write `/etc/auto.master` entry and map file | ✅ |
+| 10.3 | Wire `--mount-style=systemd-automount` and `--mount-style=autofs` into `mount-perm` | ✅ |
 
 ---
 
@@ -195,7 +195,9 @@ hsbt/
 │   ├── base.py           # Abstract MountStrategy
 │   ├── sshfs.py          # SshfsMountStrategy
 │   ├── cifs.py           # CifsMountStrategy + SmbCifsSecretManager
-│   └── rclone.py         # RcloneMountStrategy (+ sync/bisync)
+│   ├── rclone.py         # RcloneMountStrategy (+ sync/bisync)
+│   ├── systemd.py        # SystemdMountStrategy (.mount + .automount units)
+│   └── autofs.py         # AutofsMountStrategy (direct map + auto.master)
 └── cli/
     ├── _common.py        # Shared helpers, build_storage_box factory
     ├── connection.py     # set-connection, list-connections, repair-connection, delete-connection

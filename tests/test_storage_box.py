@@ -3,9 +3,11 @@ from __future__ import annotations
 import pytest
 
 from hsbt.storage_box import StorageBox
+from hsbt.mount.autofs import AutofsMountStrategy
 from hsbt.mount.cifs import CifsMountStrategy
 from hsbt.mount.rclone import RcloneMountStrategy
 from hsbt.mount.sshfs import SshfsMountStrategy
+from hsbt.mount.systemd import SystemdMountStrategy
 
 
 @pytest.fixture
@@ -38,6 +40,32 @@ class TestGetMountStrategy:
     def test_unknown_tool_raises(self, box):
         with pytest.raises(ValueError, match="Unknown mount tool"):
             box.get_mount_strategy("nfs")
+
+    def test_systemd_automount_returns_systemd_strategy(self, box):
+        s = box.get_mount_strategy("sshfs", mount_style="systemd-automount")
+        assert isinstance(s, SystemdMountStrategy)
+
+    def test_systemd_automount_cifs_returns_systemd_strategy(self, box):
+        s = box.get_mount_strategy("cifs", mount_style="systemd-automount", smb_username="u", smb_password="p")
+        assert isinstance(s, SystemdMountStrategy)
+        assert s.mount_tool == "cifs"
+
+    def test_systemd_automount_rejects_rclone(self, box):
+        with pytest.raises(ValueError, match="mount_style="):
+            box.get_mount_strategy("rclone", mount_style="systemd-automount")
+
+    def test_autofs_returns_autofs_strategy(self, box):
+        s = box.get_mount_strategy("sshfs", mount_style="autofs")
+        assert isinstance(s, AutofsMountStrategy)
+
+    def test_autofs_cifs_returns_autofs_strategy(self, box):
+        s = box.get_mount_strategy("cifs", mount_style="autofs", smb_username="u", smb_password="p")
+        assert isinstance(s, AutofsMountStrategy)
+        assert s.mount_tool == "cifs"
+
+    def test_autofs_rejects_rclone(self, box):
+        with pytest.raises(ValueError, match="mount_style="):
+            box.get_mount_strategy("rclone", mount_style="autofs")
 
     def test_cifs_passes_smb_credentials(self, box):
         s = box.get_mount_strategy("cifs", smb_username="smb_u", smb_password="smb_p", smb_domain="DOM")

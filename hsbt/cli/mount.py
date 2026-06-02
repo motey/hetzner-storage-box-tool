@@ -141,15 +141,20 @@ def mount_perm(
     smb_domain: str,
     webdav_password: str,
 ):
-    if mount_style in ["systemd-automount", "autofs"]:
-        raise NotImplementedError(f"'{mount_style}' is not yet implemented. Use 'fstab'.")
+    _style_defaults = {
+        "fstab": "/etc/fstab",
+        "systemd-automount": "/etc/systemd/system",
+        "autofs": "/etc",
+    }
+    effective_fstab = fstab_file if fstab_file != "/etc/fstab" else _style_defaults[mount_style]
     box: StorageBox = build_storage_box(
         identifier=identifier, host=host, user=user, ssh_key_dir=ssh_key_dir,
         password=password, config_file_path=config_file_path,
         force_password_use=force_password_use,
     )
     strategy = box.get_mount_strategy(
-        mount_tool,
+        mount_tool,  # type: ignore[arg-type]
+        mount_style=mount_style,  # type: ignore[arg-type]
         rclone_config_path=get_rclone_config_path(rclone_config_file),
         smb_username=smb_username,
         smb_password=smb_password,
@@ -158,15 +163,26 @@ def mount_perm(
     )
     strategy.mount_permanent(
         local_mountpoint=Path(mount_point),
-        fstab_file=Path(fstab_file),
+        fstab_file=Path(effective_fstab),
         remote_path=remote_path,
         uid=int(uid) if uid else None,
         gid=int(gid) if gid else None,
     )
-    click.echo(
-        f"Mounted '{box.host}' at '{mount_point}' via {mount_tool}. "
-        f"Entry written to '{fstab_file}'."
-    )
+    if mount_style == "systemd-automount":
+        click.echo(
+            f"Installed systemd automount for '{box.host}' at '{mount_point}'. "
+            f"Units written to '{effective_fstab}'."
+        )
+    elif mount_style == "autofs":
+        click.echo(
+            f"Installed autofs mount for '{box.host}' at '{mount_point}'. "
+            f"Map written to '{effective_fstab}'."
+        )
+    else:
+        click.echo(
+            f"Mounted '{box.host}' at '{mount_point}' via {mount_tool}. "
+            f"Entry written to '{effective_fstab}'."
+        )
 
 
 @click.command(name="unmount", help="Unmount and remove the fstab entry for a storage box mount.")
@@ -183,10 +199,17 @@ def mount_perm(
     type=_MOUNT_TOOL_CHOICES,
     default="sshfs",
 )
-@click.option("-ff", "--fstab-file", type=click.STRING, default="/etc/fstab")
+@click.option(
+    "-ms", "--mount-style",
+    type=click.Choice(["fstab", "systemd-automount", "autofs"], case_sensitive=False),
+    default="fstab",
+    help="Persistence style used when the mount was installed.",
+)
+@click.option("-ff", "--fstab-file", type=click.STRING, default=None,
+              help="Config dir override. Defaults to /etc/fstab, /etc/systemd/system, or /etc based on --mount-style.")
 @click.option(
     "--keep-fstab", is_flag=True, default=False,
-    help="Only unmount without removing the fstab entry.",
+    help="Only unmount without removing the persistent config entry.",
 )
 def unmount(
     identifier: str,
@@ -198,20 +221,27 @@ def unmount(
     force_password_use: bool,
     mount_point: str,
     mount_tool: str,
+    mount_style: str,
     fstab_file: str,
     keep_fstab: bool,
 ):
+    _style_defaults = {
+        "fstab": "/etc/fstab",
+        "systemd-automount": "/etc/systemd/system",
+        "autofs": "/etc",
+    }
+    effective_fstab = fstab_file or _style_defaults[mount_style]
     box: StorageBox = build_storage_box(
         identifier=identifier, host=host, user=user, ssh_key_dir=ssh_key_dir,
         password=password, config_file_path=config_file_path,
         force_password_use=force_password_use,
     )
-    strategy = box.get_mount_strategy(mount_tool)
+    strategy = box.get_mount_strategy(mount_tool, mount_style=mount_style)  # type: ignore[arg-type]
     mp = Path(mount_point)
     if keep_fstab:
         strategy.unmount(mp)
     else:
-        strategy.unmount_permanent(mp, fstab_file=Path(fstab_file))
+        strategy.unmount_permanent(mp, fstab_file=Path(effective_fstab))
     click.echo(f"Unmounted '{mount_point}'.")
 
 
