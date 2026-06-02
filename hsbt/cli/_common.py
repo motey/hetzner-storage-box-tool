@@ -98,8 +98,14 @@ def _ssh_dir_callback(ctx: click.Context, param: click.Option, value: Any) -> An
 
 
 def _conditional_prompts(ctx: click.Context, param: click.Option, value: Any) -> Any:
-    """Suppress host/user/ssh-key-dir prompts when --identifier is given."""
-    if value not in ["", None]:
+    """Suppress host/user/ssh-key-dir prompts when --identifier is given or when exactly one connection is saved."""
+    suppress = value not in ["", None]
+    if not suppress:
+        try:
+            suppress = len(ConnectionManager().list_connections().connections) == 1
+        except Exception:
+            pass
+    if suppress:
         for p in ctx.command.params:
             if p.name in ["host", "user", "ssh_key_dir"]:
                 p.prompt = None
@@ -206,6 +212,25 @@ def build_storage_box(
                 "or 'hsbt set-connection' to create one."
             )
         box = StorageBox.from_connection(con, binaries=binaries)
+    elif not host:
+        con_mgr = ConnectionManager(target_config_file=cfg)
+        all_cons = list(con_mgr.list_connections().connections.values())
+        if len(all_cons) == 1:
+            con = all_cons[0]
+            click.echo(f"Using saved connection '{con.identifier}'.")
+            box = StorageBox.from_connection(con, binaries=binaries)
+        elif len(all_cons) > 1:
+            names = ", ".join(c.identifier for c in all_cons)
+            raise click.UsageError(
+                f"Multiple connections saved ({names}). "
+                "Use --identifier (-i) to select one."
+            )
+        else:
+            raise click.UsageError(
+                "No connection specified and no saved connections found. "
+                "Run 'hsbt set-connection' to create one, "
+                "or pass --host and --user directly."
+            )
     else:
         box = StorageBox(
             host=host,

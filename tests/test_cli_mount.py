@@ -5,6 +5,7 @@ from click.testing import CliRunner
 from unittest.mock import patch, MagicMock
 
 from hsbt.cli import cli
+from hsbt.models import Connection, ConnectionList
 from hsbt.storage_box import StorageBox
 
 
@@ -161,3 +162,58 @@ class TestUnmountCommand:
             ])
         strategy.unmount.assert_called_once()
         strategy.unmount_permanent.assert_not_called()
+
+
+class TestAutoDetectConnection:
+    """build_storage_box auto-selects the sole saved connection when --identifier is omitted."""
+
+    def _make_con_list(self, identifiers):
+        cl = ConnectionList()
+        for ident in identifiers:
+            cl.set_connection(Connection(
+                identifier=ident,
+                host=f"{ident}.your-storagebox.de",
+                user=ident,
+                key_dir="/tmp",
+            ))
+        return cl
+
+    def test_auto_selects_single_connection(self, runner, tmp_path):
+        """Single saved connection is used without --identifier; message shown."""
+        con_list = self._make_con_list(["mybox"])
+        # Use a plain MagicMock (no spec) so that box.ssh.password assignment works.
+        box = MagicMock()
+        box.host = "mybox.your-storagebox.de"
+        box.user = "mybox"
+        box.get_mount_strategy.return_value = MagicMock()
+        with (
+            patch("hsbt.cli._common.ConnectionManager") as MockCM,
+            patch("hsbt.cli._common.StorageBox") as MockSB,
+        ):
+            MockCM.return_value.list_connections.return_value = con_list
+            MockSB.from_connection.return_value = box
+            result = runner.invoke(cli, ["mount", "--mount-point", str(tmp_path / "mnt")])
+        assert result.exit_code == 0, result.output
+        assert "Using saved connection 'mybox'" in result.output
+
+    def test_multiple_connections_requires_identifier(self):
+        """build_storage_box raises UsageError when multiple connections exist and no identifier given."""
+        import click
+        from hsbt.cli._common import build_storage_box
+
+        con_list = self._make_con_list(["box1", "box2"])
+        with patch("hsbt.cli._common.ConnectionManager") as MockCM:
+            MockCM.return_value.list_connections.return_value = con_list
+            with pytest.raises(click.UsageError, match="box1"):
+                build_storage_box(identifier="", host=None, config_file_path="/tmp/fake.json")
+
+    def test_no_connections_no_host_raises(self):
+        """build_storage_box raises UsageError when no connections and no host given."""
+        import click
+        from hsbt.cli._common import build_storage_box
+
+        con_list = self._make_con_list([])
+        with patch("hsbt.cli._common.ConnectionManager") as MockCM:
+            MockCM.return_value.list_connections.return_value = con_list
+            with pytest.raises(click.UsageError, match="set-connection"):
+                build_storage_box(identifier="", host=None, config_file_path="/tmp/fake.json")

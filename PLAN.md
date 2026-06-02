@@ -172,7 +172,7 @@ Low priority. Only worth doing after Phases 8–9 are complete.
 
 | # | Item | Status |
 |---|------|--------|
-| 11.1 | Default connection identifier for single-box setups — skip `--identifier` when only one connection is saved | ⬜ |
+| 11.1 | Default connection identifier for single-box setups — skip `--identifier` when only one connection is saved | ✅ |
 | 11.2 | Evaluate WebDAV support — does it fit alongside SSH/CIFS as a third transport? | ✅ |
 
 ---

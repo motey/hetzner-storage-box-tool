@@ -20,7 +20,8 @@ The mount commands support four backends:
 | `webdav` | WebDAV over HTTPS | 443 | Best firewall/proxy traversal. Uses rclone internally; no extra dependency. |
 
 Connections can be used one-off (pass `--host` and `--user` directly) or by name (pass `--identifier`
-after running `set-connection` once).
+after running `set-connection` once). When only one connection is saved, `--identifier` can be omitted
+entirely — hsbt will select it automatically.
 
 
 ## Installation
@@ -100,6 +101,16 @@ Deployed public key '/home/tim/.ssh/hsbt_mybox.pub' to 'u000001.your-storagebox.
 Saved connection to '/home/tim/.config/hetzner_sbt_connections.json':
   identifier='mybox' host='u000001.your-storagebox.de' user='u000001' key_dir='~/.ssh/'
 ```
+
+Once a connection is saved, all commands that accept `--identifier` will auto-select it when it is
+the only saved connection — you can omit `-i` entirely:
+
+```bash
+# Instead of: hsbt mount -i mybox --mount-point /mnt/mybox
+hsbt mount --mount-point /mnt/mybox
+```
+
+If more than one connection is saved, passing `-i <name>` is required.
 
 List saved connections:
 
