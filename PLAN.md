@@ -146,13 +146,15 @@ The full structural overhaul completed in this session.
 | # | Item | Status |
 |---|------|--------|
 | 9.1 | Rewrite `README.md` — installation, quick-start, all current command names with examples | ✅ |
-| 9.2 | Migration guide section — map old camelCase commands to new kebab-case equivalents | ⬜ |
-| 9.3 | Document all CLI options per command (can use `hsbt <cmd> --help` output as source) | ✅ |
-| 9.4 | Document CIFS/SMB setup — what Hetzner settings to enable, what credentials to use | ⬜ |
-| 9.5 | Document rclone setup — when to use rclone vs sshfs vs cifs | ⬜ |
-| 9.6 | Add docstrings to public classes: `StorageBox`, `SshTransport`, `MountStrategy` subclasses, `ConnectionManager` | ⬜ |
-| 9.7 | Add `CHANGELOG.md` — document breaking changes from the refactor | ⬜ |
+| 9.2 | Migration guide section — map old camelCase commands to new kebab-case equivalents | ✅ |
+| 9.3 | Document all CLI options per command (`docs/user-guide.md`) | ✅ |
+| 9.4 | Document CIFS/SMB setup — what Hetzner settings to enable, what credentials to use (`docs/backends.md`) | ✅ |
+| 9.5 | Document rclone setup — when to use rclone vs sshfs vs cifs (`docs/backends.md`) | ✅ |
+| 9.6 | Add docstrings to public classes: `StorageBox`, `SshTransport`, `MountStrategy` subclasses, `ConnectionManager` | 🔁 |
+| 9.7 | Add `CHANGELOG.md` — document breaking changes from the refactor | 🔁 |
 | 9.8 | Replace `setup.py` with `pyproject.toml` (modern packaging, PDM backend, Python 3.14) | ✅ |
+| 9.9 | `docs/api.md` — Python library usage guide | ✅ |
+| 9.10 | `docs/development.md` — architecture, adding commands/backends, conventions | ✅ |
 
 ---
 
