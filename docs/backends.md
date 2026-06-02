@@ -9,8 +9,8 @@ The default backend is **rclone** (used when `--mount-tool` is not specified).
 
 | Backend | Protocol | Port | Requires on Hetzner | Local dependency | Good for |
 |---|---|---|---|---|---|
+| `rclone` | SFTP over SSH | 23 | SSH access | `rclone` | `Default` Recommended general use, sync/bisync |
 | `sshfs` | SFTP over SSH | 23 | SSH access | `sshfs` | Simple mounts, maintenance-mode upstream |
-| `rclone` | SFTP over SSH | 23 | SSH access | `rclone` | Recommended general use, sync/bisync |
 | `cifs` | SMB/CIFS | 445 | Samba/CIFS access | `cifs-utils` | Windows/NAS compatibility, NFS-style sharing |
 | `webdav` | WebDAV over HTTPS | 443 | WebDAV/HTTPS access | `rclone` | Restricted networks, proxy/firewall traversal |
 
