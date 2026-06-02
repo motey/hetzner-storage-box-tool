@@ -6,7 +6,7 @@ scriptable interface that works well in automation, containers, and CI pipelines
 
 **Key features:**
 
-- Four mount backends: **sshfs**, **rclone** (recommended), **CIFS/SMB**, and **WebDAV over HTTPS**
+- Four mount backends: **sshfs**, **rclone** (recommended for most uses, see [why](docs/backends.md#choosing-a-backend)), **CIFS/SMB**, and **WebDAV over HTTPS**
 - Three persistence styles for permanent mounts: **fstab**, **systemd automount**, and **autofs**
 - Saved named connections: set up once, reuse everywhere
 - One-way and bidirectional **sync** via rclone

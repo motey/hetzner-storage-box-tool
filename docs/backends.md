@@ -7,19 +7,20 @@ up the prerequisites on both your local machine and the Hetzner side.
 
 | Backend | Protocol | Port | Requires on Hetzner | Local dependency | Good for |
 |---|---|---|---|---|---|
-| `sshfs` | SFTP over SSH | 23 | SSH access | `sshfs` | Simple one-off mounts |
+| `sshfs` | SFTP over SSH | 23 | SSH access | `sshfs` | Simple mounts, maintenance-mode upstream |
 | `rclone` | SFTP over SSH | 23 | SSH access | `rclone` | Recommended general use, sync/bisync |
 | `cifs` | SMB/CIFS | 445 | Samba/CIFS access | `cifs-utils` | Windows/NAS compatibility, NFS-style sharing |
 | `webdav` | WebDAV over HTTPS | 443 | WebDAV/HTTPS access | `rclone` | Restricted networks, proxy/firewall traversal |
 
 **Short recommendation:**
 
-- Start with `rclone` for everything. It is the most capable backend, supports sync, and the
-  upstream project is actively maintained.
+- Use `rclone` for most cases. It is actively developed, supports sync/bisync, and performs
+  better under heavy I/O due to its VFS caching layer.
+- Use `sshfs` if you want a lighter option for simple temporary mounts and do not need sync.
+  The project is in maintenance mode (bug fixes, regular releases, no new features) — it is
+  stable and widely packaged.
 - Use `cifs` if you need native SMB semantics or are sharing the mount with Windows clients.
 - Use `webdav` when ports 23 and 445 are blocked (common in corporate networks).
-- `sshfs` works fine for simple temporary mounts but the upstream project is unmaintained.
-  The binary is still widely packaged and available, it just does not receive new features.
 
 ---
 
@@ -46,11 +47,12 @@ hsbt mount -i mybox --mount-point /mnt/mybox --mount-tool sshfs
 sudo hsbt mount-perm -i mybox --mount-point /mnt/mybox --mount-tool sshfs
 ```
 
-**Limitations:**
+**Notes:**
 
-- The `sshfs` project is officially unmaintained. The binary still works on current kernels
-  but there are no security patches or new releases.
-- Performance under heavy random I/O is worse than rclone.
+- sshfs is in maintenance mode: the project receives regular bug-fix releases and is shipped
+  by all major Linux distributions, but there is no active feature development. See the
+  [upstream repository](https://github.com/libfuse/sshfs) for current status.
+- Performance under heavy or random I/O is lower than rclone (no caching layer).
 - Does not support sync or bisync.
 
 ---

@@ -65,11 +65,6 @@ def mount(
     smb_domain: str,
     webdav_password: str,
 ):
-    if mount_tool == "sshfs":
-        log.warning(
-            "sshfs is unmaintained — see https://github.com/libfuse/sshfs. "
-            "Consider using --mount-tool=rclone instead."
-        )
     box: StorageBox = build_storage_box(
         identifier=identifier, host=host, user=user, ssh_key_dir=ssh_key_dir,
         password=password, config_file_path=config_file_path,
