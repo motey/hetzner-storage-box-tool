@@ -111,3 +111,45 @@ class TestConstructor:
     def test_directory_as_target_raises(self, tmp_path):
         with pytest.raises(ValueError):
             SmbCifsSecretManager(target_file=tmp_path)
+
+
+class TestChown:
+    def test_chown_called_with_correct_uid_when_owner_set(self, sm):
+        from unittest.mock import MagicMock, patch
+        with patch("hsbt.mount.cifs.pwd.getpwnam") as mock_getpwnam:
+            with patch("hsbt.mount.cifs.os.chown") as mock_chown:
+                mock_getpwnam.return_value = MagicMock(pw_uid=1234)
+                sm.create_secret_file("u", "p", owner="someuser")
+        mock_chown.assert_called_once()
+        _, uid, _ = mock_chown.call_args[0]
+        assert uid == 1234
+
+    def test_chown_called_with_correct_gid_when_group_set(self, sm):
+        from unittest.mock import MagicMock, patch
+        with patch("hsbt.mount.cifs.grp.getgrnam") as mock_getgrnam:
+            with patch("hsbt.mount.cifs.os.chown") as mock_chown:
+                mock_getgrnam.return_value = MagicMock(gr_gid=5678)
+                sm.create_secret_file("u", "p", group="somegroup")
+        mock_chown.assert_called_once()
+        _, _, gid = mock_chown.call_args[0]
+        assert gid == 5678
+
+    def test_chown_not_called_without_owner_or_group(self, sm):
+        from unittest.mock import patch
+        with patch("hsbt.mount.cifs.os.chown") as mock_chown:
+            sm.create_secret_file("u", "p")
+        mock_chown.assert_not_called()
+
+
+class TestMalformedFile:
+    def test_lines_without_equals_are_skipped(self, sm):
+        sm.target_file.parent.mkdir(parents=True, exist_ok=True)
+        sm.target_file.write_text("username=user1\nno_equals_here\npassword=pass1\n")
+        creds = sm.read_secret_file()
+        assert creds == {"username": "user1", "password": "pass1"}
+
+    def test_value_containing_equals_is_preserved(self, sm):
+        sm.target_file.parent.mkdir(parents=True, exist_ok=True)
+        sm.target_file.write_text("username=user1\npassword=p=ss=word\n")
+        creds = sm.read_secret_file()
+        assert creds["password"] == "p=ss=word"

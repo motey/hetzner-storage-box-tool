@@ -52,6 +52,33 @@ class TestGetMountStrategy:
         assert isinstance(s, RcloneMountStrategy)
         assert s.config_file_path == cfg
 
+    def test_webdav_returns_rclone_strategy(self, box):
+        s = box.get_mount_strategy("webdav", webdav_password="p")
+        assert isinstance(s, RcloneMountStrategy)
+
+    def test_webdav_backend_attribute_is_webdav(self, box):
+        s = box.get_mount_strategy("webdav", webdav_password="p")
+        assert s.backend == "webdav"
+
+    def test_webdav_passes_password(self, box):
+        s = box.get_mount_strategy("webdav", webdav_password="mypassword")
+        assert s.webdav_password == "mypassword"
+
+    def test_webdav_passes_rclone_config_path(self, box, tmp_path):
+        cfg = tmp_path / "rclone.conf"
+        s = box.get_mount_strategy("webdav", webdav_password="p", rclone_config_path=cfg)
+        assert s.config_file_path == cfg
+
+
+class TestFromConnection:
+    def test_key_manager_identifier_derived_from_connection(self, connection):
+        box = StorageBox.from_connection(connection)
+        assert connection.identifier in box.key_manager.identifier
+
+    def test_key_manager_uses_key_dir_from_connection(self, connection):
+        box = StorageBox.from_connection(connection)
+        assert connection.key_dir in str(box.key_manager.private_key_path)
+
 
 class TestPassThroughs:
     def test_host_property(self, box, transport):

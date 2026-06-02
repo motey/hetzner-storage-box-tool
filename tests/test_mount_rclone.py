@@ -162,3 +162,40 @@ class TestIsMounted:
     def test_false_on_failure(self, rclone, tmp_path):
         with patch("hsbt.mount.rclone.run_command", return_value=make_err(return_code=1)):
             assert rclone.is_mounted(tmp_path / "mnt") is False
+
+
+class TestGetExistingConfig:
+    def test_raises_value_error_when_missing_and_missing_ok_false(self, rclone):
+        with patch("hsbt.mount.rclone.run_command", return_value=make_ok(stdout="{}")):
+            with pytest.raises(ValueError, match="No rclone config"):
+                rclone.get_existing_config("nonexistent_remote", missing_ok=False)
+
+    def test_returns_none_when_missing_and_missing_ok_true(self, rclone):
+        with patch("hsbt.mount.rclone.run_command", return_value=make_ok(stdout="{}")):
+            result = rclone.get_existing_config("nonexistent_remote", missing_ok=True)
+        assert result is None
+
+    def test_returns_config_when_present(self, rclone, transport):
+        existing = {transport.key_manager.identifier: {"type": "sftp", "host": transport.host}}
+        with patch("hsbt.mount.rclone.run_command", return_value=make_ok(stdout=json.dumps(existing))):
+            result = rclone.get_existing_config(transport.key_manager.identifier)
+        assert result["type"] == "sftp"
+
+
+class TestUnmount:
+    def test_unmount_calls_umount_binary(self, rclone, tmp_path):
+        mp = tmp_path / "mnt"
+        with patch("hsbt.mount.rclone.run_command", return_value=make_ok()) as mock_rc:
+            rclone.unmount(mp)
+        cmd = mock_rc.call_args[0][0]
+        assert "umount" in cmd
+        assert str(mp) in cmd
+
+    def test_unmount_permanent_calls_umount_then_removes_fstab(self, rclone, tmp_path):
+        fstab = tmp_path / "fstab"
+        fstab.write_text("")
+        mp = tmp_path / "mnt"
+        with patch("hsbt.mount.rclone.run_command", return_value=make_ok()) as mock_rc:
+            rclone.unmount_permanent(mp, fstab_file=fstab)
+        cmds = [c[0][0] for c in mock_rc.call_args_list]
+        assert any("umount" in c for c in cmds)

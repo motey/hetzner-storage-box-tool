@@ -10,13 +10,14 @@ hsbt stores named connections in a JSON config file (default: `~/.config/hetzner
 Each connection holds the hostname, username, and path to an SSH keypair. On first use hsbt deploys your
 public key to the storage box via password auth so that all subsequent operations are key-only.
 
-The mount commands support three backends:
+The mount commands support four backends:
 
-| Backend | Protocol | Notes |
-|---------|----------|-------|
-| `sshfs` | SFTP over SSH | Simple, no extra config. Officially unmaintained upstream. |
-| `rclone` | SFTP over SSH | Recommended. Also supports sync and bisync. |
-| `cifs` | SMB | Useful when you need native Windows/NAS compatibility. |
+| Backend | Protocol | Port | Notes |
+|---------|----------|------|-------|
+| `sshfs` | SFTP over SSH | 23 | Simple, no extra config. Officially unmaintained upstream. |
+| `rclone` | SFTP over SSH | 23 | Recommended. Also supports sync and bisync. |
+| `cifs` | SMB | 445 | Useful when you need native Windows/NAS compatibility. |
+| `webdav` | WebDAV over HTTPS | 443 | Best firewall/proxy traversal. Uses rclone internally; no extra dependency. |
 
 Connections can be used one-off (pass `--host` and `--user` directly) or by name (pass `--identifier`
 after running `set-connection` once).
@@ -62,6 +63,7 @@ All settings can be configured through environment variables. CLI flags always t
 | `HSBT_SSH_KEY_FILE_DIR` | Directory to store SSH keypairs. Defaults to `~/.ssh/`. |
 | `HSBT_RCLONE_CONFIG_FILE` | Path to the rclone config file. |
 | `HSBT_PASSWORD` | Storage box password. Used for initial key deployment and `--force-password-use`. |
+| `HSBT_WEBDAV_PASSWORD` | Password for the WebDAV backend (`--mount-tool webdav`). Falls back to `HSBT_PASSWORD` when not set. |
 
 ### Binary paths
 
@@ -127,7 +129,12 @@ hsbt delete-connection -i mybox --delete-keys    # also removes SSH keypair from
 hsbt mount -i mybox --mount-point /mnt/mybox
 hsbt mount -i mybox --mount-point /mnt/mybox --mount-tool rclone
 hsbt mount -i mybox --mount-point /mnt/mybox --mount-tool cifs --smb-username u000001 --smb-password secret
+hsbt mount -i mybox --mount-point /mnt/mybox --mount-tool webdav --webdav-password secret
 ```
+
+The WebDAV backend connects over HTTPS (port 443) — useful when ports 23 or 445 are blocked by a
+firewall or proxy. It uses rclone internally, so no additional system package is required. The password
+can also be supplied via the `HSBT_WEBDAV_PASSWORD` environment variable (falls back to `HSBT_PASSWORD`).
 
 Without a saved connection, pass host and user directly:
 
@@ -140,6 +147,7 @@ hsbt mount -h u000001.your-storagebox.de -u u000001 --mount-point /mnt/mybox
 ```bash
 hsbt mount-perm -i mybox --mount-point /mnt/mybox
 hsbt mount-perm -i mybox --mount-point /mnt/mybox --mount-tool rclone --uid 1000 --gid 1000
+hsbt mount-perm -i mybox --mount-point /mnt/mybox --mount-tool webdav --webdav-password secret
 ```
 
 **Unmount** (also removes the fstab entry by default):
@@ -234,6 +242,6 @@ The core logic lives in [hsbt/storage_box.py](hsbt/storage_box.py) which compose
 See [TESTING.md](TESTING.md) for the full guide. The short version:
 
 ```bash
-./run_tests.sh                # 247 unit tests, no credentials needed
-./run_integration_tests.sh    # 24 integration tests, needs a real storage box
+./run_tests.sh                # 339 unit tests, no credentials needed
+./run_integration_tests.sh    # integration tests, needs a real storage box
 ```

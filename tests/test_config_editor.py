@@ -135,3 +135,22 @@ class TestErrors:
                 _ed(f).set_config_entry("y", identifier="box1")
         finally:
             f.chmod(0o644)
+
+    def test_create_if_missing_false_raises_when_file_absent(self, tmp_path):
+        f = tmp_path / "nonexistent_fstab"
+        from hsbt.config_editor import ConfigFileEditor
+        ed = ConfigFileEditor(f, create_if_missing=False)
+        with pytest.raises(FileNotFoundError):
+            ed.set_config_entry("entry", identifier="box1")
+
+
+class TestGetEntryEdgeCases:
+    def test_get_returns_empty_for_populated_file_with_no_matching_identifier(self, tmp_path):
+        f = tmp_path / "fstab"
+        f.write_text("/dev/sda1 / ext4 defaults 0 1\nUUID=abc /boot ext4 defaults 0 2\n")
+        assert _ed(f).get_config_entry("nonexistent") == []
+
+    def test_get_returns_empty_for_empty_file(self, tmp_path):
+        f = tmp_path / "fstab"
+        f.write_text("")
+        assert _ed(f).get_config_entry("box1") == []

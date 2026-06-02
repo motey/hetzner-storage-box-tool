@@ -4,6 +4,7 @@ import json
 import logging
 import os
 from pathlib import Path
+from typing import Literal
 
 from hsbt.config_editor import ConfigFileEditor
 from hsbt.mount.base import MountStrategy
@@ -20,11 +21,19 @@ _DEFAULT_FSTAB_ARGS = (
 
 
 class RcloneMountStrategy(MountStrategy):
-    """Mount via rclone (SFTP backend)."""
+    """Mount via rclone (SFTP or WebDAV backend)."""
 
-    def __init__(self, transport: SshTransport, config_file_path: Path | str | None = None):
+    def __init__(
+        self,
+        transport: SshTransport,
+        config_file_path: Path | str | None = None,
+        backend: Literal["sftp", "webdav"] = "sftp",
+        webdav_password: str | None = None,
+    ):
         self.transport = transport
         self.config_file_path: Path | None = cast_path(config_file_path)
+        self.backend = backend
+        self.webdav_password = webdav_password
 
     # ------------------------------------------------------------------
     # rclone config helpers
@@ -43,10 +52,9 @@ class RcloneMountStrategy(MountStrategy):
             return None
         raise ValueError(f"No rclone config named '{name}'")
 
-    def ensure_config(self) -> bool:
-        """Create rclone sftp config for this connection if it doesn't match. Returns True if created/updated."""
+    def _build_sftp_config(self) -> dict:
         km = self.transport.key_manager
-        expected = dict(
+        return dict(
             type="sftp",
             host=self.transport.host,
             user=self.transport.user,
@@ -54,13 +62,57 @@ class RcloneMountStrategy(MountStrategy):
             port=str(self.transport.port),
             key_file=str(km.private_key_path),
         )
+
+    def _build_webdav_config(self) -> dict:
+        """Return the non-secret fields for the WebDAV rclone config."""
+        return dict(
+            type="webdav",
+            url=f"https://{self.transport.host}",
+            user=self.transport.user,
+            vendor="other",
+        )
+
+    def ensure_config(self) -> bool:
+        """Create or update rclone config for this connection. Returns True if created/updated."""
+        if self.backend == "webdav":
+            return self._ensure_webdav_config()
+        return self._ensure_sftp_config()
+
+    def _ensure_sftp_config(self) -> bool:
+        km = self.transport.key_manager
+        expected = self._build_sftp_config()
         existing = self.get_existing_config(km.identifier, missing_ok=True)
         if existing == expected:
             return False
         params = " ".join(f'{k} "{v}"' for k, v in expected.items())
         cmd = f"{self.transport.binaries['rclone']} {self._config_param()} config create {km.identifier} sftp {params}"
         run_command(cmd)
-        log.debug(f"Created/updated rclone config '{km.identifier}'")
+        log.debug(f"Created/updated rclone sftp config '{km.identifier}'")
+        return True
+
+    def _ensure_webdav_config(self) -> bool:
+        if not self.webdav_password:
+            raise ValueError(
+                "webdav_password is required for the WebDAV backend. "
+                "Provide webdav_password when creating RcloneMountStrategy."
+            )
+        km = self.transport.key_manager
+        expected_base = self._build_webdav_config()
+        existing = self.get_existing_config(km.identifier, missing_ok=True)
+        # rclone obscures the password non-deterministically, so we compare only non-secret
+        # fields. If those match and a 'pass' entry exists, assume credentials are current.
+        non_pass_match = (
+            existing is not None
+            and all(existing.get(k) == v for k, v in expected_base.items())
+            and "pass" in existing
+        )
+        if non_pass_match:
+            return False
+        config_params = {**expected_base, "pass": self.webdav_password}
+        params = " ".join(f'{k} "{v}"' for k, v in config_params.items())
+        cmd = f"{self.transport.binaries['rclone']} {self._config_param()} config create {km.identifier} webdav {params}"
+        run_command(cmd)
+        log.debug(f"Created/updated rclone webdav config '{km.identifier}'")
         return True
 
     def _remote(self, remote_path: str | Path | None = None) -> str:

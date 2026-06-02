@@ -51,3 +51,17 @@ class TestMountStrategyDispatch:
     def test_sshfs_strategy_has_correct_host(self, storage_box_live):
         s = storage_box_live.get_mount_strategy("sshfs")
         assert s.transport.host == storage_box_live.host
+
+    def test_webdav_strategy_type(self, storage_box_live):
+        s = storage_box_live.get_mount_strategy("webdav", webdav_password="p")
+        assert isinstance(s, RcloneMountStrategy)
+
+    def test_webdav_strategy_backend(self, storage_box_live):
+        s = storage_box_live.get_mount_strategy("webdav", webdav_password="p")
+        assert s.backend == "webdav"
+
+    def test_webdav_strategy_has_correct_url(self, storage_box_live):
+        s = storage_box_live.get_mount_strategy("webdav", webdav_password="p")
+        cfg = s._build_webdav_config()
+        assert storage_box_live.host in cfg["url"]
+        assert cfg["url"].startswith("https://")

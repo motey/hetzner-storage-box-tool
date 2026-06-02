@@ -61,6 +61,7 @@ class TestMountCommand:
             smb_username="smb_u",
             smb_password="smb_p",
             smb_domain=None,
+            webdav_password=None,
         )
 
     def test_rclone_tool_selected(self, runner, tmp_path):

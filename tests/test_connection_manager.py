@@ -99,3 +99,51 @@ class TestList:
         mgr.set_connection("x", user="u1", host="h.de", key_dir=str(tmp_path))
         cl = mgr.list_connections(from_specific_config_file=cfg)
         assert "x" in cl.connections
+
+
+class TestMultiSourceBehavior:
+    def _two_source_mgr(self, tmp_path):
+        file1 = tmp_path / "f1.json"
+        file2 = tmp_path / "f2.json"
+        mgr = ConnectionManager(target_config_file=file1)
+        mgr._alt_sources = [file2]
+        mgr2 = ConnectionManager(target_config_file=file2)
+        return mgr, mgr2, file1, file2
+
+    def test_get_returns_from_primary_when_present_in_both(self, tmp_path):
+        mgr, mgr2, _, _ = self._two_source_mgr(tmp_path)
+        mgr.set_connection("box", user="u1", host="primary.de", key_dir=str(tmp_path))
+        mgr2.set_connection("box", user="u2", host="alt.de", key_dir=str(tmp_path))
+        result = mgr.get_connection("box")
+        assert result.host == "primary.de"
+
+    def test_get_falls_back_to_alt_source(self, tmp_path):
+        mgr, mgr2, _, _ = self._two_source_mgr(tmp_path)
+        mgr2.set_connection("box", user="u2", host="alt.de", key_dir=str(tmp_path))
+        result = mgr.get_connection("box")
+        assert result is not None
+        assert result.host == "alt.de"
+
+    def test_list_merges_entries_from_all_sources(self, tmp_path):
+        mgr, mgr2, _, _ = self._two_source_mgr(tmp_path)
+        mgr.set_connection("a", user="u1", host="h1.de", key_dir=str(tmp_path))
+        mgr2.set_connection("b", user="u2", host="h2.de", key_dir=str(tmp_path))
+        cl = mgr.list_connections()
+        assert "a" in cl.connections
+        assert "b" in cl.connections
+
+    def test_delete_succeeds_when_found_in_alt_source(self, tmp_path):
+        mgr, mgr2, _, _ = self._two_source_mgr(tmp_path)
+        mgr2.set_connection("alt-only", user="u2", host="h2.de", key_dir=str(tmp_path))
+        deleted = mgr.delete_connection("alt-only")
+        assert deleted is True
+
+    def test_delete_unwritable_file_raises_permission_error(self, tmp_path):
+        mgr, _, file1, _ = self._two_source_mgr(tmp_path)
+        mgr.set_connection("box", user="u", host="h.de", key_dir=str(tmp_path))
+        file1.chmod(0o444)
+        try:
+            with pytest.raises(PermissionError):
+                mgr.delete_connection("box")
+        finally:
+            file1.chmod(0o644)

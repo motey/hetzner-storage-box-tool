@@ -147,3 +147,24 @@ class TestDeployKey:
     def test_public_key_is_deployed_false_on_255(self, transport):
         with patch.object(transport, "run_remote_command", return_value=make_err(return_code=255)):
             assert transport.public_key_is_deployed() is False
+
+    def test_public_key_is_deployed_false_on_unexpected_return_code(self, transport):
+        with patch.object(transport, "run_remote_command", return_value=make_err(return_code=1)):
+            assert transport.public_key_is_deployed() is False
+
+    def test_deploy_retries_with_sftp_mode_on_unsupported_message(self, transport):
+        transport.password = "secret"
+        unsupported = make_ok()
+        unsupported.stdout = 'ssh-copy-id is only supported with the "-s" argument.'
+        success = make_ok()
+
+        with patch.object(transport.key_manager, "validate_if_keys_exists_and_valid", return_value=True):
+            with patch.object(transport.key_manager, "create_known_host_entry_if_not_exists"):
+                with patch.object(transport, "public_key_is_deployed", return_value=False):
+                    with patch.object(transport, "run_remote_command", side_effect=[unsupported, success]) as mock_rrc:
+                        result = transport.deploy_public_key_if_not_done()
+
+        assert result is True
+        assert mock_rrc.call_count == 2
+        second_kwargs = mock_rrc.call_args_list[1][1]
+        assert "-s" in second_kwargs.get("extra_params", {})

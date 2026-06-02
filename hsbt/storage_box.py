@@ -12,7 +12,7 @@ from hsbt.mount.sshfs import SshfsMountStrategy
 from hsbt.process import CommandResult
 from hsbt.transport.ssh import SshTransport
 
-MountTool = Literal["sshfs", "cifs", "rclone"]
+MountTool = Literal["sshfs", "cifs", "rclone", "webdav"]
 
 
 class StorageBox:
@@ -66,6 +66,7 @@ class StorageBox:
         smb_username: str | None = None,
         smb_password: str | None = None,
         smb_domain: str | None = None,
+        webdav_password: str | None = None,
     ) -> MountStrategy:
         if tool == "sshfs":
             return SshfsMountStrategy(self.ssh)
@@ -78,7 +79,14 @@ class StorageBox:
             )
         if tool == "rclone":
             return RcloneMountStrategy(self.ssh, config_file_path=rclone_config_path)
-        raise ValueError(f"Unknown mount tool '{tool}'. Choose: sshfs, cifs, rclone")
+        if tool == "webdav":
+            return RcloneMountStrategy(
+                self.ssh,
+                config_file_path=rclone_config_path,
+                backend="webdav",
+                webdav_password=webdav_password,
+            )
+        raise ValueError(f"Unknown mount tool '{tool}'. Choose: sshfs, cifs, rclone, webdav")
 
     # ------------------------------------------------------------------
     # Convenience pass-throughs so callers don't import SshTransport

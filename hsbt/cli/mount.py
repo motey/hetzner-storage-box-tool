@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from typing import Literal
 
@@ -12,9 +13,18 @@ from hsbt.cli._common import (
     get_rclone_config_path,
     _conditional_prompts,
 )
+from hsbt.env_var_names import EnvVarNames
 from hsbt.storage_box import StorageBox
 
 log = logging.getLogger(__name__)
+
+_MOUNT_TOOL_CHOICES = click.Choice(["sshfs", "rclone", "cifs", "webdav"], case_sensitive=False)
+
+
+def _resolve_webdav_password(cli_value: str | None) -> str | None:
+    if cli_value:
+        return cli_value
+    return os.getenv(EnvVarNames.WEBDAV_PASSWORD, None) or None
 
 
 @click.command(name="mount", help="Temporarily mount a storage box (not persistent across reboots).")
@@ -28,7 +38,7 @@ log = logging.getLogger(__name__)
 @click.option("-mp", "--mount-point", required=True, type=click.STRING, help="Local path to mount to.")
 @click.option(
     "-mt", "--mount-tool",
-    type=click.Choice(["sshfs", "rclone", "cifs"], case_sensitive=False),
+    type=_MOUNT_TOOL_CHOICES,
     default="sshfs",
     help="Mount backend to use.",
 )
@@ -37,6 +47,7 @@ log = logging.getLogger(__name__)
 @click.option("--smb-username", type=click.STRING, default=None, help="SMB/CIFS username (CIFS only).")
 @click.option("--smb-password", type=click.STRING, default=None, hide_input=True, help="SMB/CIFS password (CIFS only).")
 @click.option("--smb-domain", type=click.STRING, default=None, help="SMB/CIFS domain (CIFS only, optional).")
+@click.option("--webdav-password", type=click.STRING, default=None, hide_input=True, help="WebDAV password (WebDAV only). Falls back to HSBT_WEBDAV_PASSWORD env var.")
 def mount(
     identifier: str,
     host: str,
@@ -52,6 +63,7 @@ def mount(
     smb_username: str,
     smb_password: str,
     smb_domain: str,
+    webdav_password: str,
 ):
     if mount_tool == "sshfs":
         log.warning(
@@ -69,6 +81,7 @@ def mount(
         smb_username=smb_username,
         smb_password=smb_password,
         smb_domain=smb_domain,
+        webdav_password=_resolve_webdav_password(webdav_password),
     )
     strategy.mount(Path(mount_point), remote_path=remote_path)
     click.echo(f"Mounted '{box.host}' at '{mount_point}' via {mount_tool}.")
@@ -89,7 +102,7 @@ def mount(
 @click.option("-r", "--remote-path", type=click.STRING, default=None, help="Remote path (default: home dir).")
 @click.option(
     "-mt", "--mount-tool",
-    type=click.Choice(["sshfs", "rclone", "cifs"], case_sensitive=False),
+    type=_MOUNT_TOOL_CHOICES,
     default="sshfs",
     help="Mount backend to use.",
 )
@@ -106,6 +119,7 @@ def mount(
 @click.option("--smb-username", type=click.STRING, default=None, help="SMB/CIFS username (CIFS only).")
 @click.option("--smb-password", type=click.STRING, default=None, hide_input=True, help="SMB/CIFS password (CIFS only).")
 @click.option("--smb-domain", type=click.STRING, default=None, help="SMB/CIFS domain (CIFS only, optional).")
+@click.option("--webdav-password", type=click.STRING, default=None, hide_input=True, help="WebDAV password (WebDAV only). Falls back to HSBT_WEBDAV_PASSWORD env var.")
 def mount_perm(
     identifier: str,
     host: str,
@@ -125,6 +139,7 @@ def mount_perm(
     smb_username: str,
     smb_password: str,
     smb_domain: str,
+    webdav_password: str,
 ):
     if mount_style in ["systemd-automount", "autofs"]:
         raise NotImplementedError(f"'{mount_style}' is not yet implemented. Use 'fstab'.")
@@ -139,6 +154,7 @@ def mount_perm(
         smb_username=smb_username,
         smb_password=smb_password,
         smb_domain=smb_domain,
+        webdav_password=_resolve_webdav_password(webdav_password),
     )
     strategy.mount_permanent(
         local_mountpoint=Path(mount_point),
@@ -164,7 +180,7 @@ def mount_perm(
 @click.option("-m", "--mount-point", required=True, type=click.STRING, help="Mount point to unmount.")
 @click.option(
     "-mt", "--mount-tool",
-    type=click.Choice(["sshfs", "rclone", "cifs"], case_sensitive=False),
+    type=_MOUNT_TOOL_CHOICES,
     default="sshfs",
 )
 @click.option("-ff", "--fstab-file", type=click.STRING, default="/etc/fstab")
