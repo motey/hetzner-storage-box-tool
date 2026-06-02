@@ -33,7 +33,7 @@ Addressed entirely by the refactor in Phase 7.
 | 2.4 | Flatten the `connection_options` decorator (was triple-nested ternary logic) | ✅ |
 | 2.5 | Deduplicate `get_config_file_path` / `get_ssh_dir` / `get_rclone_config_file_path` helpers | ✅ |
 | 2.6 | Rename CLI commands from camelCase to kebab-case (`setConnection` → `set-connection`, etc.) | ✅ |
-| 2.7 | Add `__all__` exports to public module surfaces | ⬜ |
+| 2.7 | Add `__all__` exports to public module surfaces | ✅ |
 
 ---
 

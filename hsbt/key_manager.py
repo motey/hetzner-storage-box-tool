@@ -7,6 +7,8 @@ from typing import List, Literal, Union
 from hsbt.process import run_command
 from hsbt.utils import cast_path
 
+__all__ = ["KeyManager"]
+
 log = logging.getLogger(__name__)
 
 

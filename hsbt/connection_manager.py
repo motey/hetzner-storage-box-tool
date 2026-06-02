@@ -8,6 +8,8 @@ from typing import Any, List, Union
 from hsbt.models import Connection, ConnectionList
 from hsbt.utils import is_root, cast_path
 
+__all__ = ["ConnectionManager"]
+
 log = logging.getLogger(__name__)
 
 

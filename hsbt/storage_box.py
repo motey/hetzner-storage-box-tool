@@ -14,6 +14,12 @@ from hsbt.mount.systemd import SystemdMountStrategy
 from hsbt.process import CommandResult
 from hsbt.transport.ssh import SshTransport
 
+__all__ = [
+    "StorageBox",
+    "MountTool",
+    "MountStyle",
+]
+
 MountTool = Literal["sshfs", "cifs", "rclone", "webdav"]
 MountStyle = Literal["fstab", "systemd-automount", "autofs"]
 

@@ -11,6 +11,11 @@ from hsbt.models import Connection, FileInfoCollection
 from hsbt.process import CommandResult, run_command
 from hsbt.utils import cast_path, parse_ls_l_output, convert_df_output_to_dict
 
+__all__ = [
+    "DeployKeyPasswordMissingError",
+    "SshTransport",
+]
+
 log = logging.getLogger(__name__)
 
 _DEFAULT_BINARIES: Dict[str, str] = {

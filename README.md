@@ -305,6 +305,38 @@ The core logic lives in [hsbt/storage_box.py](hsbt/storage_box.py) which compose
 ([hsbt/transport/ssh.py](hsbt/transport/ssh.py)) with pluggable mount strategies in
 [hsbt/mount/](hsbt/mount/).
 
+### Using hsbt as a library
+
+The public API is re-exported from the top-level `hsbt` package:
+
+```python
+from hsbt import StorageBox, Connection, ConnectionManager
+
+# Load a saved connection and open a storage box session
+mgr = ConnectionManager()
+con = mgr.get_connection("mybox")
+
+box = StorageBox.from_connection(con)
+box.deploy_public_key_if_not_done()
+
+# File operations
+files = box.list_remote_files("/home")
+box.upload_file("/local/file.txt", "/home/file.txt")
+box.download_file("/home/file.txt", "/tmp/file.txt")
+
+# Mount (transient)
+strategy = box.get_mount_strategy("sshfs")
+strategy.mount("/mnt/mybox")
+```
+
+Sub-package public surfaces:
+
+| Import path | Exported names |
+|-------------|----------------|
+| `hsbt` | `StorageBox`, `MountTool`, `MountStyle`, `Connection`, `ConnectionList`, `FileInfo`, `FileInfoCollection`, `ConnectionManager` |
+| `hsbt.mount` | `MountStrategy`, `SshfsMountStrategy`, `CifsMountStrategy`, `SmbCifsSecretManager`, `RcloneMountStrategy`, `SystemdMountStrategy`, `AutofsMountStrategy` |
+| `hsbt.transport` | `SshTransport`, `DeployKeyPasswordMissingError` |
+
 ### Adding a command
 
 1. Write the Click command in the appropriate `hsbt/cli/*.py` module (or create a new one).

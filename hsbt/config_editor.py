@@ -5,6 +5,11 @@ import logging
 from pathlib import Path
 from typing import List, Union
 
+__all__ = [
+    "ConfigEntryExistsError",
+    "ConfigFileEditor",
+]
+
 log = logging.getLogger(__name__)
 
 

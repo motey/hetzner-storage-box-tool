@@ -12,6 +12,8 @@ from hsbt.process import run_command
 from hsbt.transport.ssh import SshTransport
 from hsbt.utils import cast_path
 
+__all__ = ["AutofsMountStrategy"]
+
 log = logging.getLogger(__name__)
 
 _AUTOFS_TIMEOUT = 60

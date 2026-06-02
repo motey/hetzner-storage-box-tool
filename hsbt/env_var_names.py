@@ -1,6 +1,11 @@
 from typing import Dict
 from enum import Enum
 
+__all__ = [
+    "EnvVarNames",
+    "EXECUTABLE_PATH_ENV_VAR_MAPPING",
+]
+
 
 class EnvVarNames(str, Enum):
     CENTRAL_CONFIG_DIR = "HSBT_CENTRAL_CONFIG_DIR"

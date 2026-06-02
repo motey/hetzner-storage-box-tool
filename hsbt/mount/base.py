@@ -3,6 +3,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from pathlib import Path
 
+__all__ = ["MountStrategy"]
+
 
 class MountStrategy(ABC):
     """Common interface for all mount strategies (sshfs, cifs, rclone)."""

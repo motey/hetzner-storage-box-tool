@@ -4,6 +4,13 @@ from typing import Dict
 from pathlib import Path
 from pydantic import BaseModel, Field
 
+__all__ = [
+    "Connection",
+    "ConnectionList",
+    "FileInfo",
+    "FileInfoCollection",
+]
+
 
 class Connection(BaseModel):
     identifier: str

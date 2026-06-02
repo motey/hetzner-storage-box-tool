@@ -4,6 +4,8 @@ import logging
 
 import click
 
+__all__ = ["cli"]
+
 from hsbt.cli.connection import (
     set_connection,
     list_connections,

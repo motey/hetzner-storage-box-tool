@@ -6,6 +6,13 @@ import logging
 from dataclasses import dataclass, field
 from typing import Dict, Generator, List, Union
 
+__all__ = [
+    "ProcessOutput",
+    "CommandResult",
+    "open_process",
+    "run_command",
+]
+
 log = logging.getLogger(__name__)
 
 
