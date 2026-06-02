@@ -116,7 +116,7 @@ hsbt mount [OPTIONS]
   -s, --ssh-key-dir TEXT        SSH key directory
   -mp, --mount-point TEXT       Local path to mount to  [required]
   -mt, --mount-tool [sshfs|rclone|cifs|webdav]
-                                Mount backend (default: sshfs)
+                                Mount backend (default: rclone)
   -r, --remote-path TEXT        Remote path to mount (default: home directory)
   -rc, --rclone-config-file TEXT  Custom rclone config file path
   --smb-username TEXT           SMB username (CIFS only)
@@ -131,11 +131,8 @@ hsbt mount [OPTIONS]
 **Examples:**
 
 ```bash
-# Default backend (sshfs)
+# Default backend (rclone)
 hsbt mount -i mybox --mount-point /mnt/mybox
-
-# rclone backend (recommended)
-hsbt mount -i mybox --mount-point /mnt/mybox --mount-tool rclone
 
 # CIFS/SMB
 hsbt mount -i mybox --mount-point /mnt/mybox --mount-tool cifs \
@@ -165,7 +162,7 @@ hsbt mount-perm [OPTIONS]
   -s, --ssh-key-dir TEXT        SSH key directory
   -m, --mount-point TEXT        Local path to mount to  [required]
   -mt, --mount-tool [sshfs|rclone|cifs|webdav]
-                                Mount backend (default: sshfs)
+                                Mount backend (default: rclone)
   -ms, --mount-style [fstab|systemd-automount|autofs]
                                 Persistence style (default: fstab)
   -r, --remote-path TEXT        Remote path to mount (default: home directory)

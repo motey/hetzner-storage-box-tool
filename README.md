@@ -22,7 +22,7 @@ pip install git+https://github.com/motey/hetzner-storage-box-tool.git
 # 2. Save a connection (prompts for your password once to deploy an SSH key)
 hsbt set-connection -i mybox -h u000001.your-storagebox.de -u u000001
 
-# 3. Mount it
+# 3. Mount it (default backend: rclone)
 hsbt mount -i mybox --mount-point /mnt/mybox
 
 # 4. Make it survive reboots

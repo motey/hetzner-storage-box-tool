@@ -39,7 +39,7 @@ def _resolve_webdav_password(cli_value: str | None) -> str | None:
 @click.option(
     "-mt", "--mount-tool",
     type=_MOUNT_TOOL_CHOICES,
-    default="sshfs",
+    default="rclone",
     help="Mount backend to use.",
 )
 @click.option("-r", "--remote-path", type=click.STRING, default=None, help="Remote path to mount (default: home dir).")
@@ -98,7 +98,7 @@ def mount(
 @click.option(
     "-mt", "--mount-tool",
     type=_MOUNT_TOOL_CHOICES,
-    default="sshfs",
+    default="rclone",
     help="Mount backend to use.",
 )
 @click.option(
@@ -192,7 +192,7 @@ def mount_perm(
 @click.option(
     "-mt", "--mount-tool",
     type=_MOUNT_TOOL_CHOICES,
-    default="sshfs",
+    default="rclone",
 )
 @click.option(
     "-ms", "--mount-style",

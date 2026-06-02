@@ -5,6 +5,8 @@ up the prerequisites on both your local machine and the Hetzner side.
 
 ## Choosing a backend
 
+The default backend is **rclone** (used when `--mount-tool` is not specified).
+
 | Backend | Protocol | Port | Requires on Hetzner | Local dependency | Good for |
 |---|---|---|---|---|---|
 | `sshfs` | SFTP over SSH | 23 | SSH access | `sshfs` | Simple mounts, maintenance-mode upstream |
