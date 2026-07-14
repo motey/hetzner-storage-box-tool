@@ -1,0 +1,41 @@
+# Build and publish the package to PyPI when a GitHub release is published.
+#
+# SETUP — add this secret to your repository:
+#   Settings → Secrets and variables → Actions → New repository secret
+#
+#   PYPI_TOKEN   a PyPI API token (starts with "pypi-")
+#
+# The version uploaded is whatever is set in pyproject.toml, so bump
+# `[project] version` before tagging/creating the release.
+
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:     # allow manual trigger from the Actions tab
+
+jobs:
+  publish:
+    name: Build and publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install PDM
+        run: pip install pdm --quiet
+
+      - name: Build sdist and wheel
+        run: pdm build
+
+      - name: Publish to PyPI
+        env:
+          PDM_PUBLISH_USERNAME: __token__
+          PDM_PUBLISH_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        run: pdm publish --no-build

@@ -1,106 +1,109 @@
-# hsbt - Hetzner Storage Box Tool
+<div align="center">
 
-A command-line tool and Python library for [Hetzner Storage Boxes](https://www.hetzner.com/storage/storage-box).
-It handles everything from first-time SSH key deployment through permanent system mounts, with a single
-scriptable interface that works well in automation, containers, and CI pipelines.
+# 📦 hsbt — Hetzner Storage Box Tool
 
-**Key features:**
+**One scriptable CLI (and typed Python library) for [Hetzner Storage Boxes](https://www.hetzner.com/storage/storage-box)** —
+from first SSH key deployment to permanent system mounts.
 
-- Four mount backends: **sshfs**, **rclone** (recommended for most uses, see [why](docs/backends.md#choosing-a-backend)), **CIFS/SMB**, and **WebDAV over HTTPS**
-- Three persistence styles for permanent mounts: **fstab**, **systemd automount**, and **autofs**
-- Saved named connections: set up once, reuse everywhere
-- One-way and bidirectional **sync** via rclone
-- **SCP file transfer** and **remote command** execution
-- Usable as a **Python library**: all logic is importable and typed
+[![PyPI](https://img.shields.io/pypi/v/hsbt?logo=pypi&logoColor=white)](https://pypi.org/project/hsbt/)
+[![Python](https://img.shields.io/pypi/pyversions/hsbt?logo=python&logoColor=white)](https://pypi.org/project/hsbt/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Integration Tests](https://github.com/motey/hetzner-storage-box-tool/actions/workflows/integration.yml/badge.svg)](https://github.com/motey/hetzner-storage-box-tool/actions/workflows/integration.yml)
+[![GitHub](https://img.shields.io/badge/GitHub-motey%2Fhetzner--storage--box--tool-181717?logo=github)](https://github.com/motey/hetzner-storage-box-tool)
 
-## Quick start
+</div>
+
+---
+
+## ✨ Highlights
+
+- 🔌 **4 mount backends** — `rclone` (recommended · [why](docs/backends.md#choosing-a-backend)), `sshfs`, `CIFS/SMB`, `WebDAV over HTTPS`
+- ♻️ **3 persistence styles** — fstab · systemd automount · autofs
+- 🔑 **Password-free after setup** — deploys an SSH key once, then it's key-only forever
+- 🔄 **One-way & bidirectional sync** via rclone
+- 📤 **SCP transfer & remote commands** out of the box
+- 🐍 **Importable Python library** — every operation is typed and reusable
+
+## 🚀 Quick start
 
 ```bash
-# 1. Install
-pip install git+https://github.com/motey/hetzner-storage-box-tool.git
+pip install hsbt
 
-# 2. Save a connection (prompts for your password once to deploy an SSH key)
+# Save a connection (prompts for your password once to deploy an SSH key)
 hsbt set-connection -i mybox -h u000001.your-storagebox.de -u u000001
 
-# 3. Mount it (default backend: rclone)
+# Mount it (default backend: rclone)
 hsbt mount -i mybox --mount-point /mnt/mybox
 
-# 4. Make it survive reboots
+# Make it survive reboots
 sudo hsbt mount-perm -i mybox --mount-point /mnt/mybox
 
-# 5. Sync the whole box to a local directory
+# Sync the whole box to a local directory
 hsbt sync -i mybox --local-dir ~/backup/mybox
 ```
 
-After step 2 the password is never needed again. All subsequent operations use the deployed SSH key.
-If you only have one saved connection, you can omit `-i mybox` everywhere.
+> After the first `set-connection` the password is never needed again. With only one saved connection, `-i mybox` is optional everywhere.
 
-## More examples
+## 🧰 Commands
+
+| Command | Does |
+|---|---|
+| `set-connection` · `list-connections` · `repair-connection` · `delete-connection` | Manage saved named connections |
+| `mount` · `mount-perm` · `unmount` | Temporary and reboot-persistent mounts |
+| `sync` | One-way or bidirectional sync via rclone |
+| `upload` · `download` · `available-space` | File transfer & disk usage |
+
+Run `hsbt --help` or `hsbt <command> --help` for every option.
+
+## 📥 Installation
 
 ```bash
-# Upload a backup
-hsbt upload -i mybox ./archive.tar.gz /backups/archive.tar.gz
+pip install hsbt          # from PyPI
+pdm add hsbt              # or with PDM
+```
 
-# Check how much space is left
-hsbt available-space -i mybox --human-readable
+**System dependencies** (Debian/Ubuntu — install only what you use):
 
-# Mount via HTTPS WebDAV (useful when SSH/SMB ports are blocked)
+```bash
+apt install openssh-client sshpass   # always needed
+apt install rclone                   # --mount-tool rclone / webdav / sync
+apt install sshfs                    # --mount-tool sshfs
+apt install cifs-utils               # --mount-tool cifs
+apt install autofs                   # --mount-style autofs
+```
+
+Requires **Python 3.14+**. After install, `hsbt` is on your `PATH`.
+
+## 💡 More examples
+
+```bash
+# Mount via HTTPS WebDAV (when SSH/SMB ports are blocked)
 hsbt mount -i mybox --mount-point /mnt/mybox --mount-tool webdav --webdav-password secret
 
-# On-demand mount with auto-disconnect after 10 min of inactivity
+# On-demand mount, auto-disconnect after inactivity
 sudo hsbt mount-perm -i mybox --mount-point /mnt/mybox --mount-style systemd-automount
 
 # Bidirectional sync (keeps both sides in step)
 hsbt sync -i mybox --local-dir ~/mybox-mirror --mode bisync
 ```
 
-## Installation
-
-**System dependencies** (Debian/Ubuntu, install only what you need):
-
-```bash
-apt install openssh-client sshpass   # always needed
-apt install sshfs                    # for --mount-tool sshfs
-apt install rclone                   # for --mount-tool rclone / webdav / sync
-apt install cifs-utils               # for --mount-tool cifs
-apt install autofs                   # for --mount-style autofs
-```
-
-**Python package** (requires Python 3.14+):
-
-```bash
-pip install git+https://github.com/motey/hetzner-storage-box-tool.git
-```
-
-Or with [PDM](https://pdm-project.org):
-
-```bash
-pdm add git+https://github.com/motey/hetzner-storage-box-tool.git
-```
-
-After installation `hsbt` is available on your PATH. Run `hsbt --help` to confirm.
-
-## How it works
-
-hsbt stores named connections in a JSON config file (default: `~/.config/hetzner_sbt_connections.json`).
-Each connection holds the hostname, username, and a path to an SSH keypair.
-
-On the first `set-connection` call hsbt prompts for your password and deploys your public key to the
-storage box via `ssh-copy-id`. After that all operations are key-only and the password is never stored.
-
-When exactly **one** connection is saved, passing `-i <name>` is optional: hsbt selects it automatically.
-With multiple connections `-i <name>` is always required.
-
-## Documentation
+## 📚 Documentation
 
 | Document | Audience |
 |---|---|
-| [User Guide](docs/user-guide.md) | Every command, every option, all environment variables |
-| [Mount Backends](docs/backends.md) | Choosing between sshfs / rclone / CIFS / WebDAV, setup per backend |
-| [Python API](docs/api.md) | Using hsbt as a library in Python code |
+| [User Guide](docs/user-guide.md) | Every command, option, and environment variable |
+| [Mount Backends](docs/backends.md) | Choosing sshfs / rclone / CIFS / WebDAV, per-backend setup |
+| [Python API](docs/api.md) | Using hsbt as a library |
 | [Development Guide](docs/development.md) | Architecture, adding commands/backends, contributing |
 | [Testing Guide](TESTING.md) | Unit tests, integration tests, CI setup |
 
-## License
+## ⚙️ How it works
 
-MIT
+hsbt stores named connections in a JSON config file (default `~/.config/hetzner_sbt_connections.json`),
+each holding a hostname, username, and SSH keypair path. The first `set-connection` prompts for your
+password and deploys your public key via `ssh-copy-id`; from then on every operation is key-only and the
+password is never stored.
+
+## 📄 License
+
+[MIT](LICENSE) © Tim Bleimehl
