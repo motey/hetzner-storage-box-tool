@@ -5,8 +5,14 @@
 #
 #   PYPI_TOKEN   a PyPI API token (starts with "pypi-")
 #
-# The version uploaded is whatever is set in pyproject.toml, so bump
-# `[project] version` before tagging/creating the release.
+# The version is derived from the git tag by pdm-backend (SCM versioning), so
+# there is nothing to hand-edit: create a GitHub release whose tag is the new
+# version number (e.g. tag "0.2.0" publishes hsbt 0.2.0). The tag must be a new
+# version — PyPI rejects re-uploading a version that already exists.
+#
+# workflow_dispatch runs off whatever commit/tag you pick; if that commit is not
+# exactly on a tag the version will be a dev version that PyPI won't accept —
+# publish real releases via the release event, not manual dispatch.
 
 name: Publish to PyPI
 
@@ -21,7 +27,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # fetch-depth: 0 + tags so pdm-backend can derive the version from the
+      # release tag (a shallow checkout has no tags and versioning would fail).
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python 3.14
         uses: actions/setup-python@v5

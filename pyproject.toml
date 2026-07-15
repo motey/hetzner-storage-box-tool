@@ -1,6 +1,6 @@
 [project]
 name = "hsbt"
-version = "0.1.0"
+dynamic = ["version"]     # derived from the git tag by pdm-backend (see [tool.pdm.version])
 description = "CLI tool for common tasks with a Hetzner Storage Box."
 authors = [{name = "Tim Bleimehl"}]
 license = {text = "MIT"}
@@ -34,6 +34,14 @@ build-backend = "pdm.backend"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+# Version comes from the latest git tag (e.g. tag "0.2.0" -> version 0.2.0).
+# Cut a release/tag on GitHub and pdm-backend stamps that version into the build;
+# no more hand-editing a version string. fallback_version is used only when git
+# metadata is unavailable (e.g. building from an sdist with no .git).
+[tool.pdm.version]
+source = "scm"
+fallback_version = "0.0.0"
 
 [tool.pdm.build]
 includes = ["hsbt/"]
