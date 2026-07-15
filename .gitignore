@@ -108,6 +108,9 @@ ipython_config.py
 #   in version control.
 #   https://pdm.fming.dev/#use-with-ide
 .pdm.toml
+#   .pdm-python holds a machine-local interpreter path; committing it makes CI
+#   rewrite it during `pdm build`, dirtying the tree and breaking SCM versioning.
+.pdm-python
 
 # PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
 __pypackages__/
