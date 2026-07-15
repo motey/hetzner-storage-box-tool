@@ -255,13 +255,18 @@ and add:
 
 ### Behaviour
 
-- The workflow runs on every push to `main` that touches `hsbt/` or
-  `tests/integration/`, and on manual dispatch.
-- When secrets are present all Tier 1 integration tests run against the live box.
+- The workflow runs on push/PR to `main` (when `hsbt/`, `tests/integration/`, or
+  `pyproject.toml` change) and on manual dispatch. The **tests themselves** are
+  gated on the credentials:
+  - **secrets set** → Tier 1 integration tests run against the live, paid box.
+  - **secrets absent** (including fork PRs, where GitHub never exposes secrets)
+    → all integration tests skip, the job still passes green.
+- So enabling live-box coverage is just a matter of adding the repo secrets
+  below; no workflow edit is needed.
+- Fast, hermetic **unit** tests run automatically on every push/PR via the
+  separate `tests.yml` matrix (Python 3.11–3.14).
 - Tier 2 tests (root required) do not run in CI — they are designed for local
   verification only.
-- When secrets are absent (e.g. pull requests from forks) all integration
-  tests are skipped — the job still passes.
 - GitHub automatically redacts any secret value that appears in log output, so
   the password is safe even in verbose pytest output.
 - The SSH keypair is cached between runs (per branch) so the password is only
@@ -270,8 +275,7 @@ and add:
 ### Triggering manually
 
 Go to **Actions → Integration Tests → Run workflow** and click
-**Run workflow**. This is useful for testing a branch that does not touch the
-watched paths.
+**Run workflow**. This is the only way the integration suite runs in CI.
 
 ---
 

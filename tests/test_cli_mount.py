@@ -39,12 +39,12 @@ class TestMountCommand:
             runner.invoke(cli, ["mount", *BASE_ARGS, "--mount-point", str(tmp_path / "mnt")])
         strategy.mount.assert_called_once()
 
-    def test_default_tool_is_sshfs(self, runner, tmp_path):
+    def test_default_tool_is_rclone(self, runner, tmp_path):
         box, strategy = _mock_box()
         with patch("hsbt.cli.mount.build_storage_box", return_value=box):
             runner.invoke(cli, ["mount", *BASE_ARGS, "--mount-point", str(tmp_path / "mnt")])
         call_kwargs = box.get_mount_strategy.call_args
-        assert call_kwargs[0][0] == "sshfs"
+        assert call_kwargs[0][0] == "rclone"
 
     def test_cifs_tool_selected(self, runner, tmp_path):
         box, strategy = _mock_box()

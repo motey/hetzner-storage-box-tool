@@ -19,13 +19,26 @@ name: Integration Tests
 on:
   push:
     branches: [main]
+    paths:               # only when code that matters changes — not doc-only commits
+      - "hsbt/**"
+      - "tests/integration/**"
+      - "pyproject.toml"
+      - ".github/workflows/integration.yml"
+  pull_request:
+    branches: [main]
     paths:
       - "hsbt/**"
       - "tests/integration/**"
       - "pyproject.toml"
-  pull_request:
-    branches: [main]
+      - ".github/workflows/integration.yml"
   workflow_dispatch:     # allow manual trigger from the Actions tab
+
+# The job always runs, but the tests self-skip (see tests/integration/conftest.py)
+# unless the HSBT_TEST_* credentials are present as repo secrets:
+#   - secrets set   -> tests run against the live, paid Storage Box
+#   - secrets absent (incl. fork PRs, where GitHub never exposes secrets)
+#                   -> all integration tests skip, job still passes green
+# Fast hermetic unit tests run separately on every push/PR via tests.yml.
 
 jobs:
   integration:

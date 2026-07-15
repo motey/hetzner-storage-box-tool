@@ -1,0 +1,41 @@
+# Unit tests across every supported Python version.
+#
+# These are the fast, hermetic tests (tests/ minus tests/integration/) — no
+# Storage Box or secrets required, so they run on every push and PR, including
+# from forks. The integration suite lives in integration.yml.
+
+name: Tests
+
+on:
+  push:
+    branches: [main]     # every commit to main
+  pull_request:
+    branches: [main]     # every PR targeting main
+  workflow_dispatch:     # allow manual trigger from the Actions tab
+
+jobs:
+  unit:
+    name: Unit tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false          # one failing version shouldn't cancel the rest
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install PDM
+        run: pip install pdm --quiet
+
+      - name: Install dependencies
+        run: pdm install -G test --quiet
+
+      # Integration tests require a live Storage Box and run in integration.yml.
+      - name: Run unit tests
+        run: pdm run pytest tests/ --ignore=tests/integration/ -q

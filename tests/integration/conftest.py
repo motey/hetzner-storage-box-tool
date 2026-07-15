@@ -74,7 +74,9 @@ from hsbt.transport.ssh import SshTransport
 _HOST = os.environ.get("HSBT_TEST_HOST", "")
 _USER = os.environ.get("HSBT_TEST_USER", "")
 _PASSWORD = os.environ.get("HSBT_TEST_PASSWORD", "")
-_PORT = int(os.environ.get("HSBT_TEST_SSH_PORT", "23"))
+# A defined-but-empty env var (e.g. an unset GitHub Actions secret passed
+# through as "") must fall back to the default rather than crash int().
+_PORT = int(os.environ.get("HSBT_TEST_SSH_PORT") or "23")
 _KEY_DIR = os.environ.get("HSBT_TEST_KEY_DIR", "")
 
 CREDS_AVAILABLE = bool(_HOST and _USER and _PASSWORD)
